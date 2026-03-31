@@ -60,7 +60,7 @@ Le projet se distingue par son approche communautaire : les ajouts d'aires par l
 
 ## 🗄️ Initialisation de la Base de Données (Script d'import)
 
-La base de données initiale contient plusieurs milliers de points géographiques. Ils sont ingérés via un script Node.js situé dans `/scripts/importAsc.js` qui parse un fichier source `ATOTALES_CCI.asc`.
+La base de données initiale contient plusieurs milliers de points géographiques. Ils sont ingérés via un script Node.js situé dans `/scripts/import-spots.mjs` qui parse un fichier source `ATOTALES_CCI.asc`.
 
 Le fichier d'origine suit ce format : `Longitude,Latitude,"Type Pays Ville CodePostal Aire CCI ID"`
 
