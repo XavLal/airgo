@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "airgo-tmp",
-    "slug": "airgo-tmp",
+    "name": "AirGo",
+    "slug": "airgo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -25,6 +25,10 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "scheme": "airgo",
+    "plugins": [
+      "expo-router"
+    ]
   }
 }
