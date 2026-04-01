@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, type Region } from 'react-native-maps';
+import MapView from 'react-native-map-clustering';
+import { Marker, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Badge, Button, Card } from '../../src/components/ui';
 import { supabase } from '../../src/lib/supabase';
@@ -147,6 +148,10 @@ export default function MapScreen() {
         onRegionChangeComplete={setRegion}
         showsUserLocation={hasLocationAccess}
         showsMyLocationButton={hasLocationAccess}
+        radius={40}
+        clusterColor={colors.primary}
+        spiralEnabled
+        animationEnabled
       >
         {userLocation ? (
           <Marker coordinate={userLocation} title="Vous etes ici" pinColor={colors.primary} />
