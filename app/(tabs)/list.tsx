@@ -13,6 +13,7 @@ type SpotRow = {
   latitude: number;
   longitude: number;
   distanceKm: number;
+  isVerified: boolean;
 };
 
 const DEFAULT_CENTER = {
@@ -109,6 +110,7 @@ export default function ListScreen() {
           latitude,
           longitude,
           distanceKm,
+          isVerified: row.is_verified == null ? true : Boolean(row.is_verified),
         } satisfies SpotRow;
       })
       .filter((item): item is SpotRow => item !== null)
@@ -143,6 +145,7 @@ export default function ListScreen() {
           disabled={loading}
           fullWidth
         />
+        <Button label="Ajouter une aire" variant="secondary" onPress={() => router.push('/add-spot')} fullWidth />
       </View>
 
       {loading ? (
@@ -164,6 +167,7 @@ export default function ListScreen() {
               <View style={styles.row}>
                 <Badge label={item.type} variant="service" />
                 <Badge label={`${item.distanceKm.toFixed(1)} km`} variant="parking" />
+                {!item.isVerified ? <Badge label="Non verifiee" variant="warning" /> : null}
               </View>
               <Button
                 label="Voir la fiche"
@@ -178,6 +182,7 @@ export default function ListScreen() {
                       type: item.type,
                       lat: String(item.latitude),
                       lng: String(item.longitude),
+                      verified: item.isVerified ? '1' : '0',
                     },
                   })
                 }

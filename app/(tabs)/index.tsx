@@ -21,6 +21,7 @@ type SpotMarker = {
   type: string;
   latitude: number;
   longitude: number;
+  isVerified: boolean;
 };
 
 export default function MapScreen() {
@@ -116,6 +117,7 @@ export default function MapScreen() {
           type: String(row.type ?? 'OTHER'),
           latitude,
           longitude,
+          isVerified: row.is_verified == null ? true : Boolean(row.is_verified),
         } satisfies SpotMarker;
       })
       .filter((value): value is SpotMarker => value !== null);
@@ -164,7 +166,7 @@ export default function MapScreen() {
             coordinate={{ latitude: spot.latitude, longitude: spot.longitude }}
             title={spot.name}
             description={spot.type}
-            pinColor={colors.service}
+            pinColor={spot.isVerified ? colors.service : colors.unverified}
             onCalloutPress={() =>
               router.push({
                 pathname: '/spot/[id]',
@@ -174,6 +176,7 @@ export default function MapScreen() {
                   type: spot.type,
                   lat: String(spot.latitude),
                   lng: String(spot.longitude),
+                  verified: spot.isVerified ? '1' : '0',
                 },
               })
             }
@@ -194,6 +197,7 @@ export default function MapScreen() {
             {loadingSpots ? <ActivityIndicator color={colors.service} /> : null}
           </View>
           <Badge label={`${spots.length} aires dans 50 km`} variant="service" />
+          <Badge label="Orange = non verifiee" variant="warning" />
 
           <Button
             label={loadingLocation ? 'Localisation...' : 'Recentrer sur ma position'}
@@ -201,6 +205,7 @@ export default function MapScreen() {
             disabled={loadingLocation}
             fullWidth
           />
+          <Button label="Ajouter une aire" variant="secondary" onPress={() => router.push('/add-spot')} fullWidth />
         </Card>
       </View>
     </View>

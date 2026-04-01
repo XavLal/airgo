@@ -18,6 +18,7 @@ function RootNavigator() {
       <StatusBar style={resolvedMode === 'dark' ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="add-spot" options={{ headerShown: true, title: 'Ajouter une aire' }} />
         <Stack.Screen name="spot/[id]" options={{ headerShown: true, title: '' }} />
       </Stack>
     </>
