@@ -1,18 +1,23 @@
 import { View, Text, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, Input } from '../../src/components/ui';
+import { Badge, Button, Card, Input, ScreenContainer, Separator } from '../../src/components/ui';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
 
 export default function ProfileScreen() {
   const { colors, mode, setMode, toggleMode } = useTheme();
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ScreenContainer style={styles.container}>
       <Card style={[styles.placeholder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.primary }]}>Theme Playground</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           Base "ShadCN-like" : tokens + variants + composants UI
         </Text>
+        <View style={styles.row}>
+          <Badge label="service" variant="service" />
+          <Badge label="parking" variant="parking" />
+          <Badge label="warning" variant="warning" />
+        </View>
+        <Separator />
 
         <Input label="Pseudo" placeholder="Ex: VanLifeMax" hint="Composant Input themable" />
 
@@ -34,7 +39,7 @@ export default function ProfileScreen() {
         <Text style={[styles.meta, { color: colors.textMuted }]}>Mode actuel: {mode}</Text>
         <Button label="Toggle Light/Dark" fullWidth onPress={toggleMode} />
       </Card>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
