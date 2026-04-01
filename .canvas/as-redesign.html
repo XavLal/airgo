@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AirGo — SpotIcon Variants</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0E1A14; --surface:#162018; --border:#2A3D2E; --blue:#60A5FA; --green:#4ADE80; --purple:#A78BFA; --muted:#6B8F72; --text:#E2F0E5; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); font-family:'Syne',sans-serif; color:var(--text); padding:48px; }
+  h1 { font-size:32px; font-weight:800; color:var(--blue); letter-spacing:-1px; margin-bottom:6px; }
+  .sub { font-family:'DM Mono',monospace; font-size:12px; color:var(--muted); margin-bottom:40px; }
+  .section { font-family:'DM Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:2px; color:var(--muted); margin-bottom:20px; }
+  .variants-row { display:flex; gap:40px; margin-bottom:56px; flex-wrap:wrap; }
+  .variant-col { display:flex; flex-direction:column; gap:24px; }
+  .variant-title { font-family:'DM Mono',monospace; font-size:12px; color:var(--text); margin-bottom:4px; }
+  .variant-desc { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); line-height:1.6; margin-bottom:12px; }
+  .demo-box { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px; display:flex; gap:20px; align-items:center; }
+  /* Simulation de carte (fond clair) */
+  .map-bg { background:#E8EBD5; border-radius:12px; padding:20px 28px; display:flex; gap:20px; align-items:flex-end; }
+  .map-label { font-family:'DM Mono',monospace; font-size:9px; color:#666; margin-top:6px; text-align:center; }
+  .map-col { display:flex; flex-direction:column; align-items:center; gap:4px; }
+  /* Simulation UI (fond sombre) */
+  .ui-bg { background:#162018; border-radius:12px; padding:20px 28px; display:flex; gap:20px; align-items:center; }
+  /* Séparateur */
+  hr { border:none; border-top:1px solid var(--border); margin:32px 0; }
+  .grid-all { display:grid; grid-template-columns:repeat(4,1fr); gap:20px; max-width:900px; }
+  .type-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px 16px; display:flex; flex-direction:column; align-items:center; gap:16px; }
+  .type-name { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); text-align:center; }
+  .type-lbl { font-size:16px; font-weight:800; letter-spacing:-.5px; }
+  .pins-row { display:flex; gap:16px; align-items:flex-end; }
+</style>
+</head>
+<body>
+
+<h1>SpotIcon — 3 variants</h1>
+<div class="sub">icon · badge · pin — fond opaque pour lisibilité sur carte</div>
+
+<!-- ═══════════════════ VARIANT : ICON ═══════════════════ -->
+<div class="section">variant="icon" — transparent (listes, fiches détail)</div>
+<div class="variants-row">
+  <div>
+    <div class="variant-desc">Pas de fond · Fond de l'écran visible en arrière-plan · Usage : FlatList, écran détail</div>
+    <div class="demo-box">
+      <!-- Sur fond sombre -->
+      <div class="ui-bg">
+        <div class="map-col">
+          <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+            <rect x="8" y="5" width="5" height="22" rx="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.8"/>
+            <rect x="5" y="13" width="11" height="3.5" rx="1.75" fill="#60A5FA"/>
+            <path d="M13 23H20Q20 23 20 27" stroke="#60A5FA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M20 30C20 33 17.5 36 17.5 36C17.5 36 15 33 15 30C15 27.5 17.5 26 17.5 26C17.5 26 20 27.5 20 30Z" fill="#60A5FA"/>
+            <ellipse cx="18.5" cy="40" rx="2" ry="1.3" fill="#60A5FA" fill-opacity=".45"/>
+            <line x1="24" y1="3" x2="24" y2="46" stroke="#60A5FA" stroke-width=".8" stroke-opacity=".2" stroke-dasharray="2,3"/>
+            <rect x="27" y="7" width="14" height="18" rx="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.8"/>
+            <rect x="31" y="3.5" width="6" height="5" rx="1.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.5"/>
+            <path d="M30 13Q32 11.5 34 13Q36 14.5 38 13" stroke="#60A5FA" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-opacity=".7"/>
+            <path d="M30 17Q32 15.5 34 17Q36 18.5 38 17" stroke="#60A5FA" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-opacity=".5"/>
+            <rect x="32" y="25" width="4" height="4" rx="1" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.4"/>
+            <line x1="34" y1="31" x2="34" y2="36.5" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
+            <path d="M30.5 35L34 39.5L37.5 35" fill="none" stroke="#60A5FA" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <ellipse cx="34" cy="43.5" rx="5" ry="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.5"/>
+          </svg>
+          <div class="map-label" style="color:#6B8F72">Fonctionne</div>
+        </div>
+      </div>
+      <!-- Sur fond clair (problème) -->
+      <div class="map-bg">
+        <div class="map-col">
+          <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+            <rect x="8" y="5" width="5" height="22" rx="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.8"/>
+            <rect x="5" y="13" width="11" height="3.5" rx="1.75" fill="#60A5FA"/>
+            <path d="M13 23H20Q20 23 20 27" stroke="#60A5FA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M20 30C20 33 17.5 36 17.5 36C17.5 36 15 33 15 30C15 27.5 17.5 26 17.5 26C17.5 26 20 27.5 20 30Z" fill="#60A5FA"/>
+            <ellipse cx="18.5" cy="40" rx="2" ry="1.3" fill="#60A5FA" fill-opacity=".45"/>
+            <rect x="27" y="7" width="14" height="18" rx="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.8"/>
+            <rect x="31" y="3.5" width="6" height="5" rx="1.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.5"/>
+            <rect x="32" y="25" width="4" height="4" rx="1" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.4"/>
+            <line x1="34" y1="31" x2="34" y2="36.5" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
+            <path d="M30.5 35L34 39.5L37.5 35" fill="none" stroke="#60A5FA" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <ellipse cx="34" cy="43.5" rx="5" ry="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.5"/>
+          </svg>
+          <div class="map-label" style="color:#c00">⚠ illisible sur carte</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ VARIANT : BADGE ═══════════════════ -->
+<div class="section">variant="badge" — fond plein arrondi (cards, tab bar, liste)</div>
+<div class="variants-row">
+  <div>
+    <div class="variant-desc">Fond solide (couleur type) · Bordure colorée · Fonctionne sur fond clair ET sombre</div>
+    <div class="demo-box">
+      <div class="map-bg">
+        <div class="map-col">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect x="1" y="1" width="46" height="46" rx="13" fill="#0c1e35" stroke="#60A5FA" stroke-width="1.5"/>
+            <rect x="8" y="5" width="5" height="22" rx="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.8"/>
+            <rect x="5" y="13" width="11" height="3.5" rx="1.75" fill="#60A5FA"/>
+            <path d="M13 23H20Q20 23 20 27" stroke="#60A5FA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M20 30C20 33 17.5 36 17.5 36C17.5 36 15 33 15 30C15 27.5 17.5 26 17.5 26C17.5 26 20 27.5 20 30Z" fill="#60A5FA"/>
+            <ellipse cx="18.5" cy="40" rx="2" ry="1.3" fill="#60A5FA" fill-opacity=".45"/>
+            <rect x="27" y="7" width="14" height="18" rx="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.8"/>
+            <rect x="31" y="3.5" width="6" height="5" rx="1.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.5"/>
+            <path d="M30 13Q32 11.5 34 13Q36 14.5 38 13" stroke="#60A5FA" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-opacity=".7"/>
+            <path d="M30 17Q32 15.5 34 17Q36 18.5 38 17" stroke="#60A5FA" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-opacity=".5"/>
+            <rect x="32" y="25" width="4" height="4" rx="1" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.4"/>
+            <line x1="34" y1="31" x2="34" y2="36.5" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
+            <path d="M30.5 35L34 39.5L37.5 35" fill="none" stroke="#60A5FA" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <ellipse cx="34" cy="43.5" rx="5" ry="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.5"/>
+          </svg>
+          <div class="map-label">AS · badge</div>
+        </div>
+        <div class="map-col">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect x="1" y="1" width="46" height="46" rx="13" fill="#0d1a12" stroke="#4ADE80" stroke-width="1.5"/>
+            <path d="M24 8L42 40H6L24 8Z" fill="#166534" stroke="#4ADE80" stroke-width="1.8" stroke-linejoin="round"/>
+            <path d="M24 40V26L19 40" fill="rgba(0,0,0,.35)"/>
+            <path d="M24 40V26L29 40" fill="#4ADE80" fill-opacity=".2"/>
+            <line x1="6" y1="40" x2="42" y2="40" stroke="#4ADE80" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="10" cy="12" r="1.2" fill="#FCD34D" fill-opacity=".7"/>
+          </svg>
+          <div class="map-label">AC · badge</div>
+        </div>
+        <div class="map-col">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect x="1" y="1" width="46" height="46" rx="13" fill="#060410" stroke="#A78BFA" stroke-width="1.5"/>
+            <path d="M38 16C38 22.6 32.6 28 26 28C23.3 28 20.8 27 18.9 25.4C21.8 26.4 25.2 25.7 27.7 23.6C31.2 20.8 32 15.6 29.5 11.8C27.4 8.6 23.6 7 20 7.5C21.8 6.3 23.8 5.6 26 5.6C32.6 5.6 38 10.2 38 16Z" fill="#2D1F5E" stroke="#A78BFA" stroke-width="1.5"/>
+            <circle cx="43" cy="8" r="2" fill="#FCD34D"/>
+            <rect x="2" y="26" width="30" height="14" rx="2.5" fill="#2D1F5E" stroke="#A78BFA" stroke-width="1.8"/>
+            <path d="M32 26L32 40L44 40L44 32L37 26Z" fill="#2D1F5E" stroke="#A78BFA" stroke-width="1.8" stroke-linejoin="round"/>
+            <rect x="5" y="29" width="9" height="7" rx="1.5" fill="#A78BFA" fill-opacity=".35"/>
+            <circle cx="10" cy="43" r="4.5" fill="rgba(0,0,0,.6)" stroke="#A78BFA" stroke-width="1.8"/>
+            <circle cx="29" cy="43" r="4.5" fill="rgba(0,0,0,.6)" stroke="#A78BFA" stroke-width="1.8"/>
+            <circle cx="44" cy="40" r="6" fill="#2D1F5E" stroke="#A78BFA" stroke-width="1.5"/>
+            <text x="44" y="44" text-anchor="middle" font-family="monospace" font-size="8" font-weight="bold" fill="#A78BFA">P</text>
+          </svg>
+          <div class="map-label">APCC · badge</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ VARIANT : PIN ═══════════════════ -->
+<div class="section">variant="pin" — épingle de carte (react-native-maps markers)</div>
+<div class="variants-row">
+  <div>
+    <div class="variant-desc">Forme épingle avec pointe · viewBox 48×58 · Fond solide + bordure · Point d'ancrage = pointe basse</div>
+    <div class="demo-box" style="flex-direction:column;gap:20px;align-items:flex-start;">
+
+      <!-- Sur fond carte (clair) -->
+      <div class="map-bg" style="width:100%">
+        <div class="pins-row" style="align-items:flex-end;gap:24px;width:100%">
+
+          <!-- AS Pin -->
+          <div class="map-col">
+            <svg width="48" height="58" viewBox="0 0 48 58" fill="none">
+              <path d="M24 2C12.4 2 3 11.4 3 23C3 30.8 7.4 37.6 13.8 41.2L24 57L34.2 41.2C40.6 37.6 45 30.8 45 23C45 11.4 35.6 2 24 2Z" fill="#0c1e35" stroke="#60A5FA" stroke-width="1.8" stroke-linejoin="round"/>
+              <g transform="translate(9,7) scale(0.625)">
+                <rect x="8" y="5" width="5" height="22" rx="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.8"/>
+                <rect x="5" y="13" width="11" height="3.5" rx="1.75" fill="#60A5FA"/>
+                <path d="M13 23H20Q20 23 20 27" stroke="#60A5FA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <path d="M20 30C20 33 17.5 36 17.5 36C17.5 36 15 33 15 30C15 27.5 17.5 26 17.5 26C17.5 26 20 27.5 20 30Z" fill="#60A5FA"/>
+                <rect x="27" y="7" width="14" height="18" rx="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.8"/>
+                <rect x="31" y="3.5" width="6" height="5" rx="1.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.5"/>
+                <rect x="32" y="25" width="4" height="4" rx="1" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.4"/>
+                <line x1="34" y1="31" x2="34" y2="36.5" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
+                <path d="M30.5 35L34 39.5L37.5 35" fill="none" stroke="#60A5FA" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <ellipse cx="34" cy="43.5" rx="5" ry="2.5" fill="#1E3A5F" stroke="#60A5FA" stroke-width="1.5"/>
+              </g>
+            </svg>
+            <div class="map-label">AS</div>
+          </div>
+
+          <!-- AC Pin -->
+          <div class="map-col">
+            <svg width="48" height="58" viewBox="0 0 48 58" fill="none">
+              <path d="M24 2C12.4 2 3 11.4 3 23C3 30.8 7.4 37.6 13.8 41.2L24 57L34.2 41.2C40.6 37.6 45 30.8 45 23C45 11.4 35.6 2 24 2Z" fill="#0d1a12" stroke="#4ADE80" stroke-width="1.8" stroke-linejoin="round"/>
+              <g transform="translate(9,7) scale(0.625)">
+                <path d="M24 8L42 40H6L24 8Z" fill="#166534" stroke="#4ADE80" stroke-width="1.8" stroke-linejoin="round"/>
+                <path d="M24 40V26L19 40" fill="rgba(0,0,0,.35)"/>
+                <line x1="6" y1="40" x2="42" y2="40" stroke="#4ADE80" stroke-width="1.8" stroke-linecap="round"/>
+                <circle cx="10" cy="12" r="1.2" fill="#FCD34D" fill-opacity=".7"/>
+              </g>
+            </svg>
+            <div class="map-label">AC</div>
+          </div>
+
+          <!-- AA Pin -->
+          <div class="map-col">
+            <svg width="48" height="58" viewBox="0 0 48 58" fill="none">
+              <path d="M24 2C12.4 2 3 11.4 3 23C3 30.8 7.4 37.6 13.8 41.2L24 57L34.2 41.2C40.6 37.6 45 30.8 45 23C45 11.4 35.6 2 24 2Z" fill="#0d1a12" stroke="#4ADE80" stroke-width="1.8" stroke-linejoin="round"/>
+              <g transform="translate(9,7) scale(0.625)">
+                <path d="M4 44L20 20H28L44 44Z" fill="#1A3D26" stroke="#4ADE80" stroke-width="1.5" stroke-linejoin="round"/>
+                <line x1="18" y1="20" x2="30" y2="20" stroke="#4ADE80" stroke-width="1" stroke-opacity=".5"/>
+                <line x1="24" y1="22" x2="24" y2="27" stroke="#4ADE80" stroke-width="1.5" stroke-dasharray="2,2" stroke-linecap="round"/>
+                <line x1="23.2" y1="29" x2="22.5" y2="35" stroke="#4ADE80" stroke-width="1.5" stroke-dasharray="2,2" stroke-linecap="round"/>
+                <rect x="3" y="3" width="16" height="13" rx="3" fill="#1A3D26" stroke="#4ADE80" stroke-width="1.5"/>
+                <path d="M11 6L8 13H14L11 6Z" fill="none" stroke="#4ADE80" stroke-width="1.3" stroke-linejoin="round"/>
+                <line x1="9" y1="11" x2="13" y2="11" stroke="#4ADE80" stroke-width="1.3"/>
+                <rect x="32" y="36" width="14" height="9" rx="2" fill="#1A3D26" stroke="#4ADE80" stroke-width="1.3"/>
+                <path d="M39 38L35.5 44.5H42.5L39 38Z" fill="#4ADE80"/>
+              </g>
+            </svg>
+            <div class="map-label">AA</div>
+          </div>
+
+          <!-- APCC Pin -->
+          <div class="map-col">
+            <svg width="48" height="58" viewBox="0 0 48 58" fill="none">
+              <path d="M24 2C12.4 2 3 11.4 3 23C3 30.8 7.4 37.6 13.8 41.2L24 57L34.2 41.2C40.6 37.6 45 30.8 45 23C45 11.4 35.6 2 24 2Z" fill="#060410" stroke="#A78BFA" stroke-width="1.8" stroke-linejoin="round"/>
+              <g transform="translate(9,7) scale(0.625)">
+                <path d="M38 16C38 22.6 32.6 28 26 28C23.3 28 20.8 27 18.9 25.4C21.8 26.4 25.2 25.7 27.7 23.6C31.2 20.8 32 15.6 29.5 11.8C27.4 8.6 23.6 7 20 7.5C21.8 6.3 23.8 5.6 26 5.6C32.6 5.6 38 10.2 38 16Z" fill="#2D1F5E" stroke="#A78BFA" stroke-width="1.5"/>
+                <circle cx="43" cy="8" r="2" fill="#FCD34D"/>
+                <rect x="2" y="26" width="30" height="14" rx="2.5" fill="#2D1F5E" stroke="#A78BFA" stroke-width="1.8"/>
+                <path d="M32 26L32 40L44 40L44 32L37 26Z" fill="#2D1F5E" stroke="#A78BFA" stroke-width="1.8" stroke-linejoin="round"/>
+                <circle cx="10" cy="43" r="4.5" fill="rgba(0,0,0,.6)" stroke="#A78BFA" stroke-width="1.8"/>
+                <circle cx="29" cy="43" r="4.5" fill="rgba(0,0,0,.6)" stroke="#A78BFA" stroke-width="1.8"/>
+                <circle cx="44" cy="40" r="6" fill="#2D1F5E" stroke="#A78BFA" stroke-width="1.5"/>
+                <text x="44" y="44" text-anchor="middle" font-family="monospace" font-size="8" font-weight="bold" fill="#A78BFA">P</text>
+              </g>
+            </svg>
+            <div class="map-label">APCC</div>
+          </div>
+
+          <!-- APN Pin -->
+          <div class="map-col">
+            <svg width="48" height="58" viewBox="0 0 48 58" fill="none">
+              <path d="M24 2C12.4 2 3 11.4 3 23C3 30.8 7.4 37.6 13.8 41.2L24 57L34.2 41.2C40.6 37.6 45 30.8 45 23C45 11.4 35.6 2 24 2Z" fill="#060a0f" stroke="#94A3B8" stroke-width="1.8" stroke-linejoin="round"/>
+              <g transform="translate(9,7) scale(0.625)">
+                <path d="M34 14C34 19.5 29.5 24 24 24C22 24 20.2 23.4 18.7 22.3C20.9 23 23.5 22.4 25.3 20.8C27.8 18.5 28.4 14.7 26.5 11.8C24.9 9.4 22.1 8.2 19.5 8.6C20.9 7.6 22.4 7 24 7C29.5 7 34 10 34 14Z" fill="#1E2A3A" stroke="#94A3B8" stroke-width="1.3"/>
+                <rect x="2" y="26" width="30" height="14" rx="2.5" fill="#1E2A3A" stroke="#94A3B8" stroke-width="1.8"/>
+                <path d="M32 26L32 40L44 40L44 32L37 26Z" fill="#1E2A3A" stroke="#94A3B8" stroke-width="1.8" stroke-linejoin="round"/>
+                <circle cx="10" cy="43" r="4.5" fill="rgba(0,0,0,.6)" stroke="#94A3B8" stroke-width="1.8"/>
+                <circle cx="29" cy="43" r="4.5" fill="rgba(0,0,0,.6)" stroke="#94A3B8" stroke-width="1.8"/>
+                <circle cx="44" cy="40" r="6" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="2.5,2"/>
+                <text x="44" y="44" text-anchor="middle" font-family="monospace" font-size="8" font-weight="bold" fill="#94A3B8">P</text>
+              </g>
+            </svg>
+            <div class="map-label">APN</div>
+          </div>
+
+          <!-- ACF Pin -->
+          <div class="map-col">
+            <svg width="48" height="58" viewBox="0 0 48 58" fill="none">
+              <path d="M24 2C12.4 2 3 11.4 3 23C3 30.8 7.4 37.6 13.8 41.2L24 57L34.2 41.2C40.6 37.6 45 30.8 45 23C45 11.4 35.6 2 24 2Z" fill="#111806" stroke="#86EFAC" stroke-width="1.8" stroke-linejoin="round"/>
+              <g transform="translate(9,7) scale(0.625)">
+                <rect x="8" y="20" width="32" height="24" rx="2" fill="#2D3A10" stroke="#86EFAC" stroke-width="1.8"/>
+                <path d="M6 22L24 6L42 22" fill="#3A5015" stroke="#86EFAC" stroke-width="1.8" stroke-linejoin="round"/>
+                <rect x="20" y="10" width="8" height="8" rx="1" fill="#2D3A10" stroke="#86EFAC" stroke-width="1.2"/>
+                <rect x="14" y="30" width="9" height="14" rx="1" fill="rgba(0,0,0,.5)" stroke="#86EFAC" stroke-width="1.2"/>
+                <rect x="25" y="30" width="9" height="14" rx="1" fill="rgba(0,0,0,.5)" stroke="#86EFAC" stroke-width="1.2"/>
+                <circle cx="40" cy="10" r="4" fill="#FCD34D" fill-opacity=".9"/>
+              </g>
+            </svg>
+            <div class="map-label">ACF</div>
+          </div>
+
+        </div>
+        <div style="font-family:'DM Mono',monospace;font-size:10px;color:#666;margin-top:16px;">
+          Simulation fond de carte (clair) — tous les pins sont lisibles ✓
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════ USAGE ═══════════════════ -->
+<div class="section">Usage dans le code</div>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text);line-height:2;max-width:640px;">
+  <span style="color:var(--muted)">// Fiche détail ou liste</span><br>
+  &lt;SpotIcon type="AS" size={40} <span style="color:var(--blue)">variant="icon"</span> /&gt;<br><br>
+  <span style="color:var(--muted)">// Card ou tab bar</span><br>
+  &lt;SpotIcon type="AS" size={40} <span style="color:var(--blue)">variant="badge"</span> /&gt;<br><br>
+  <span style="color:var(--muted)">// Marker react-native-maps</span><br>
+  &lt;Marker coordinate=&#123;...&#125; anchor=&#123;&#123; x: 0.5, y: 1 &#125;&#125;&gt;<br>
+  &nbsp;&nbsp;&lt;SpotIcon type="AS" size={36} <span style="color:var(--blue)">variant="pin"</span> /&gt;<br>
+  &lt;/Marker&gt;<br><br>
+  <span style="color:var(--muted)">// Note : anchor &#123; x:0.5, y:1 &#125; = pointe de l'épingle sur la coordonnée GPS</span>
+</div>
+
+</body>
+</html>
