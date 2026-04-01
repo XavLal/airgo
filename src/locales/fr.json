@@ -33,7 +33,14 @@
     "legendUnverified": "Orange = non vérifiée",
     "addSpot": "Ajouter une aire",
     "youAreHere": "Tu es ici",
-    "filtersTitle": "Types d’aires"
+    "filtersTitle": "Types d’aires",
+    "downloadZone": "Télécharger la zone affichée (hors ligne)",
+    "downloadZoneWorking": "Téléchargement…",
+    "downloadNeedNetwork": "Une connexion Internet est nécessaire pour télécharger cette zone.",
+    "downloadZoneEmpty": "Aucune aire renvoyée pour cette zone à ce niveau de zoom.",
+    "downloadZoneSuccessTitle": "Zone enregistrée",
+    "downloadZoneSuccessMessage": "{{count}} aires enregistrées pour une utilisation hors ligne (rayon API ~ {{radius}} km).",
+    "downloadZoneErrorTitle": "Téléchargement impossible"
   },
   "filters": {
     "all": "Tous",

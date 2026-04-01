@@ -33,7 +33,14 @@
     "legendUnverified": "Orange = unverified",
     "addSpot": "Add a spot",
     "youAreHere": "You are here",
-    "filtersTitle": "Spot types"
+    "filtersTitle": "Spot types",
+    "downloadZone": "Download visible area (offline)",
+    "downloadZoneWorking": "Downloading…",
+    "downloadNeedNetwork": "You need an internet connection to download this area.",
+    "downloadZoneEmpty": "No spots were returned for this view at this zoom level.",
+    "downloadZoneSuccessTitle": "Area saved",
+    "downloadZoneSuccessMessage": "{{count}} spots saved for offline use (API radius ~ {{radius}} km).",
+    "downloadZoneErrorTitle": "Download failed"
   },
   "filters": {
     "all": "All",

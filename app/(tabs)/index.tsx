@@ -7,6 +7,7 @@ import { Marker, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { TypeFilterBar } from '../../src/components/TypeFilterBar';
 import { Badge, Button, Card } from '../../src/components/ui';
+import { clampDownloadRadiusKm, coverageRadiusKmForRegion, regionToBounds } from '../../src/lib/mapRegionBounds';
 import { getIsOnline } from '../../src/lib/networkStatus';
 import { parseSpotsFromNearbyRows } from '../../src/lib/parseSpotRows';
 import { loadSpotsOfflineSnapshot, saveSpotsOfflineSnapshot } from '../../src/lib/spotsOfflineCache';
@@ -41,6 +42,7 @@ export default function MapScreen() {
   const [loadingSpots, setLoadingSpots] = useState(false);
   const [filterTypes, setFilterTypes] = useState<string[] | null>(null);
   const [fromOfflineCache, setFromOfflineCache] = useState(false);
+  const [downloadingZone, setDownloadingZone] = useState(false);
 
   const hasLocationAccess = permissionStatus === 'granted';
   const permissionLabel = useMemo(() => {
@@ -100,7 +102,7 @@ export default function MapScreen() {
             types: filterTypes,
           });
           if (rows.length > 0) {
-            await saveSpotsOfflineSnapshot(lat, lng, filterTypes, rows);
+            await saveSpotsOfflineSnapshot(lat, lng, filterTypes, rows, { coverageRadiusKm: 50 });
           }
         } else {
           const cached = await loadSpotsOfflineSnapshot(lat, lng, filterTypes);
@@ -129,6 +131,49 @@ export default function MapScreen() {
     },
     [filterTypes, t],
   );
+
+  const downloadVisibleZoneForOffline = useCallback(async () => {
+    const online = await getIsOnline();
+    if (!online) {
+      Alert.alert(t('offline.noCacheTitle'), t('map.downloadNeedNetwork'));
+      return;
+    }
+
+    const bounds = regionToBounds(region);
+    const radiusKm = clampDownloadRadiusKm(coverageRadiusKmForRegion(region));
+    const fk = !filterTypes || filterTypes.length === 0 ? 'all' : [...filterTypes].sort().join(',');
+    const id = `zone_${fk}_${radiusKm}_${[bounds.north, bounds.south, bounds.east, bounds.west].map((x) => Math.round(x * 10000)).join('_')}`;
+
+    setDownloadingZone(true);
+    try {
+      const rows = await fetchSpotsNearby({
+        latitude: region.latitude,
+        longitude: region.longitude,
+        radiusKm,
+        types: filterTypes,
+      });
+      if (rows.length === 0) {
+        Alert.alert(t('common.error'), t('map.downloadZoneEmpty'));
+        return;
+      }
+      await saveSpotsOfflineSnapshot(region.latitude, region.longitude, filterTypes, rows, {
+        bounds,
+        coverageRadiusKm: radiusKm,
+        id,
+      });
+      Alert.alert(
+        t('map.downloadZoneSuccessTitle'),
+        t('map.downloadZoneSuccessMessage', { count: rows.length, radius: radiusKm }),
+      );
+      setFromOfflineCache(false);
+      setSpots(parseSpotsFromNearbyRows(rows));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      Alert.alert(t('map.downloadZoneErrorTitle'), message);
+    } finally {
+      setDownloadingZone(false);
+    }
+  }, [filterTypes, region, t]);
 
   useEffect(() => {
     requestAndLocate().catch(() => {
@@ -204,6 +249,14 @@ export default function MapScreen() {
 
           <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('map.filtersTitle')}</Text>
           <TypeFilterBar value={filterTypes} onChange={setFilterTypes} />
+
+          <Button
+            label={downloadingZone ? t('map.downloadZoneWorking') : t('map.downloadZone')}
+            variant="secondary"
+            onPress={() => downloadVisibleZoneForOffline()}
+            disabled={downloadingZone || loadingSpots}
+            fullWidth
+          />
 
           <Button
             label={loadingLocation ? t('map.locating') : t('map.recenter')}

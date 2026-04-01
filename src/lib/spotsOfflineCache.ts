@@ -1,10 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { MapBounds } from './mapRegionBounds';
 import type { NearbySpotRow } from './spotsNearbyRpc';
 
 const STORAGE_KEY = 'airgo.spots.offline.v1';
-const MAX_ENTRIES = 14;
-/** Réutiliser un jeu de résultats si le centre de requête est assez proche du snapshot. */
-const MAX_DISTANCE_KM = 85;
+const MAX_ENTRIES = 20;
+/** Anciennes entrées sans rayon explicite : repli “proche du centre”. */
+const LEGACY_MAX_DISTANCE_KM = 85;
+
+export type OfflineSnapshotMeta = {
+  /** Rectangle exactement visible lors du téléchargement. */
+  bounds?: MapBounds;
+  /** Rayon utilisé pour la requête RPC (cercle englobant le viewport). */
+  coverageRadiusKm?: number;
+  /** Remplacer l’id (ex. téléchargement manuel d’une zone). */
+  id?: string;
+};
 
 type CacheEntry = {
   id: string;
@@ -13,6 +23,8 @@ type CacheEntry = {
   filterKey: string;
   rows: NearbySpotRow[];
   savedAt: number;
+  bounds?: MapBounds;
+  coverageRadiusKm?: number;
 };
 
 type StoreShape = {
@@ -28,9 +40,9 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-/** Identifiant de bucket (région ~0,1° + filtre). */
+/** Identifiant de bucket (région ~0,1° + filtre) — requêtes auto 50 km. */
 export function offlineCacheBucketId(latitude: number, longitude: number, types: string[] | null): string {
-  return `${round1(latitude)}_${round1(longitude)}_${filterTypesKey(types)}`;
+  return `auto_${round1(latitude)}_${round1(longitude)}_${filterTypesKey(types)}`;
 }
 
 function haversineKm(
@@ -45,6 +57,27 @@ function haversineKm(
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function pointInBounds(lat: number, lng: number, b: MapBounds): boolean {
+  if (lat < b.south || lat > b.north) return false;
+  if (b.west <= b.east) {
+    return lng >= b.west && lng <= b.east;
+  }
+  return lng >= b.west || lng <= b.east;
+}
+
+/** Le point (requête carte / liste) est couvert par ce snapshot ? */
+function entryCoversPoint(entry: CacheEntry, latitude: number, longitude: number): boolean {
+  if (entry.bounds) {
+    return pointInBounds(latitude, longitude, entry.bounds);
+  }
+  const r = entry.coverageRadiusKm;
+  const d = haversineKm({ latitude, longitude }, { latitude: entry.latitude, longitude: entry.longitude });
+  if (r != null && r > 0) {
+    return d <= r * 1.02;
+  }
+  return d <= LEGACY_MAX_DISTANCE_KM;
 }
 
 async function readStore(): Promise<StoreShape> {
@@ -63,16 +96,19 @@ async function writeStore(entries: CacheEntry[]): Promise<void> {
 }
 
 /**
- * Enregistre le résultat d’une requête réussie pour réutilisation hors ligne.
+ * Enregistre un snapshot pour le mode hors ligne.
+ * Requête “auto” typique : `meta: { coverageRadiusKm: 50 }` sans bounds.
  */
 export async function saveSpotsOfflineSnapshot(
   latitude: number,
   longitude: number,
   types: string[] | null,
   rows: NearbySpotRow[],
+  meta?: OfflineSnapshotMeta,
 ): Promise<void> {
   const filterKey = filterTypesKey(types);
-  const id = offlineCacheBucketId(latitude, longitude, types);
+  const id = meta?.id ?? offlineCacheBucketId(latitude, longitude, types);
+  const coverageRadiusKm = meta?.coverageRadiusKm ?? 50;
   const { entries } = await readStore();
   const next = entries.filter((e) => e.id !== id);
   next.unshift({
@@ -82,12 +118,14 @@ export async function saveSpotsOfflineSnapshot(
     filterKey,
     rows,
     savedAt: Date.now(),
+    bounds: meta?.bounds,
+    coverageRadiusKm,
   });
   await writeStore(next.slice(0, MAX_ENTRIES));
 }
 
 /**
- * Retourne le snapshot le plus pertinent : même filtre de types, centre géographique proche.
+ * Fusionne tous les snapshots qui couvrent le point, même filtre de types (union des spots par id).
  */
 export async function loadSpotsOfflineSnapshot(
   latitude: number,
@@ -96,15 +134,18 @@ export async function loadSpotsOfflineSnapshot(
 ): Promise<NearbySpotRow[] | null> {
   const wantKey = filterTypesKey(types);
   const { entries } = await readStore();
-  let best: CacheEntry | null = null;
-  let bestDist = Infinity;
-  for (const e of entries) {
-    if (e.filterKey !== wantKey) continue;
-    const d = haversineKm({ latitude, longitude }, { latitude: e.latitude, longitude: e.longitude });
-    if (d <= MAX_DISTANCE_KM && d < bestDist) {
-      best = e;
-      bestDist = d;
+  const matching = entries.filter((e) => e.filterKey === wantKey && entryCoversPoint(e, latitude, longitude));
+  if (matching.length === 0) return null;
+
+  const byId = new Map<string, NearbySpotRow>();
+  for (const e of matching) {
+    for (const r of e.rows) {
+      const rowId = String(r.id ?? '');
+      if (rowId && !byId.has(rowId)) {
+        byId.set(rowId, r);
+      }
     }
   }
-  return best && best.rows.length > 0 ? best.rows : null;
+  const merged = Array.from(byId.values());
+  return merged.length > 0 ? merged : null;
 }
