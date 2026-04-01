@@ -39,6 +39,12 @@
     "all": "All",
     "types": "Filter"
   },
+  "offline": {
+    "badge": "Offline — cached data",
+    "noCacheTitle": "No cached data",
+    "noCacheMessage": "Connect once while online in this area to save spots for offline viewing.",
+    "networkErrorNoCache": "No cached data for this area or filter."
+  },
   "list": {
     "title": "Spot list",
     "subtitle": "Sorted by distance (50 km radius)",

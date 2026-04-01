@@ -7,7 +7,10 @@ import { Marker, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { TypeFilterBar } from '../../src/components/TypeFilterBar';
 import { Badge, Button, Card } from '../../src/components/ui';
-import { fetchSpotsNearby } from '../../src/lib/spotsNearbyRpc';
+import { getIsOnline } from '../../src/lib/networkStatus';
+import { parseSpotsFromNearbyRows } from '../../src/lib/parseSpotRows';
+import { loadSpotsOfflineSnapshot, saveSpotsOfflineSnapshot } from '../../src/lib/spotsOfflineCache';
+import { fetchSpotsNearby, type NearbySpotRow } from '../../src/lib/spotsNearbyRpc';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
 
 const DEFAULT_REGION: Region = {
@@ -37,6 +40,7 @@ export default function MapScreen() {
   const [spots, setSpots] = useState<SpotMarker[]>([]);
   const [loadingSpots, setLoadingSpots] = useState(false);
   const [filterTypes, setFilterTypes] = useState<string[] | null>(null);
+  const [fromOfflineCache, setFromOfflineCache] = useState(false);
 
   const hasLocationAccess = permissionStatus === 'granted';
   const permissionLabel = useMemo(() => {
@@ -79,41 +83,49 @@ export default function MapScreen() {
   const fetchNearbySpots = useCallback(
     async (targetRegion: Region) => {
       setLoadingSpots(true);
+      setFromOfflineCache(false);
+
+      const lat = targetRegion.latitude;
+      const lng = targetRegion.longitude;
+      let rows: NearbySpotRow[] = [];
+
+      const online = await getIsOnline();
 
       try {
-        const rows = await fetchSpotsNearby({
-          latitude: targetRegion.latitude,
-          longitude: targetRegion.longitude,
-          radiusKm: 50,
-          types: filterTypes,
-        });
-
-        const parsed = rows
-          .map((row) => {
-            const latitude = Number(row.latitude ?? row.lat);
-            const longitude = Number(row.longitude ?? row.lng);
-            const id = String(row.id ?? '');
-
-            if (!id || Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
-
-            return {
-              id,
-              name: String(row.name ?? 'Aire'),
-              type: String(row.type ?? 'OTHER'),
-              latitude,
-              longitude,
-              isVerified: row.is_verified == null ? true : Boolean(row.is_verified),
-            } satisfies SpotMarker;
-          })
-          .filter((value): value is SpotMarker => value !== null);
-
-        setSpots(parsed);
+        if (online) {
+          rows = await fetchSpotsNearby({
+            latitude: lat,
+            longitude: lng,
+            radiusKm: 50,
+            types: filterTypes,
+          });
+          if (rows.length > 0) {
+            await saveSpotsOfflineSnapshot(lat, lng, filterTypes, rows);
+          }
+        } else {
+          const cached = await loadSpotsOfflineSnapshot(lat, lng, filterTypes);
+          if (cached) {
+            rows = cached;
+            setFromOfflineCache(true);
+          }
+        }
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        Alert.alert(t('map.spotsLoadErrorTitle'), message);
-      } finally {
-        setLoadingSpots(false);
+        const cached = await loadSpotsOfflineSnapshot(lat, lng, filterTypes);
+        if (cached) {
+          rows = cached;
+          setFromOfflineCache(true);
+        } else if (online) {
+          const message = err instanceof Error ? err.message : String(err);
+          Alert.alert(t('map.spotsLoadErrorTitle'), `${message}\n${t('offline.networkErrorNoCache')}`);
+        }
       }
+
+      if (!online && rows.length === 0) {
+        Alert.alert(t('offline.noCacheTitle'), t('offline.noCacheMessage'));
+      }
+
+      setSpots(parseSpotsFromNearbyRows(rows));
+      setLoadingSpots(false);
     },
     [filterTypes, t],
   );
@@ -187,6 +199,7 @@ export default function MapScreen() {
             {loadingSpots ? <ActivityIndicator color={colors.service} /> : null}
           </View>
           <Badge label={t('map.spotsInRadius', { count: spots.length })} variant="service" />
+          {fromOfflineCache ? <Badge label={t('offline.badge')} variant="farm" /> : null}
           <Badge label={t('map.legendUnverified')} variant="warning" />
 
           <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('map.filtersTitle')}</Text>

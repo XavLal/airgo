@@ -5,7 +5,10 @@ import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { TypeFilterBar } from '../../src/components/TypeFilterBar';
 import { Badge, Button, Card, ScreenContainer } from '../../src/components/ui';
-import { fetchSpotsNearby } from '../../src/lib/spotsNearbyRpc';
+import { getIsOnline } from '../../src/lib/networkStatus';
+import { parseSpotsFromNearbyRows } from '../../src/lib/parseSpotRows';
+import { loadSpotsOfflineSnapshot, saveSpotsOfflineSnapshot } from '../../src/lib/spotsOfflineCache';
+import { fetchSpotsNearby, type NearbySpotRow } from '../../src/lib/spotsNearbyRpc';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
 
 type SpotRow = {
@@ -45,6 +48,7 @@ export default function ListScreen() {
   const [loading, setLoading] = useState(false);
   const [spots, setSpots] = useState<SpotRow[]>([]);
   const [filterTypes, setFilterTypes] = useState<string[] | null>(null);
+  const [fromOfflineCache, setFromOfflineCache] = useState(false);
 
   const permissionLabel = useMemo(() => {
     if (permissionStatus === null) return t('map.permissionPending');
@@ -54,6 +58,7 @@ export default function ListScreen() {
 
   const loadNearbyList = useCallback(async () => {
     setLoading(true);
+    setFromOfflineCache(false);
 
     const { status } = await Location.requestForegroundPermissionsAsync();
     setPermissionStatus(status);
@@ -70,42 +75,52 @@ export default function ListScreen() {
     };
     setUserLocation(center);
 
+    let rows: NearbySpotRow[] = [];
+    const online = await getIsOnline();
+
     try {
-      const rows = await fetchSpotsNearby({
-        latitude: center.latitude,
-        longitude: center.longitude,
-        radiusKm: 50,
-        types: filterTypes,
-      });
-
-      const parsed = rows
-        .map((row) => {
-          const latitude = Number(row.latitude ?? row.lat);
-          const longitude = Number(row.longitude ?? row.lng);
-          const id = String(row.id ?? '');
-          if (!id || Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
-
-          const distanceKm = haversineDistanceKm(center, { latitude, longitude });
-          return {
-            id,
-            name: String(row.name ?? 'Aire'),
-            type: String(row.type ?? 'OTHER'),
-            latitude,
-            longitude,
-            distanceKm,
-            isVerified: row.is_verified == null ? true : Boolean(row.is_verified),
-          } satisfies SpotRow;
-        })
-        .filter((item): item is SpotRow => item !== null)
-        .sort((a, b) => a.distanceKm - b.distanceKm);
-
-      setSpots(parsed);
+      if (online) {
+        rows = await fetchSpotsNearby({
+          latitude: center.latitude,
+          longitude: center.longitude,
+          radiusKm: 50,
+          types: filterTypes,
+        });
+        if (rows.length > 0) {
+          await saveSpotsOfflineSnapshot(center.latitude, center.longitude, filterTypes, rows);
+        }
+      } else {
+        const cached = await loadSpotsOfflineSnapshot(center.latitude, center.longitude, filterTypes);
+        if (cached) {
+          rows = cached;
+          setFromOfflineCache(true);
+        }
+      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      Alert.alert(t('list.loadErrorTitle'), message);
-    } finally {
-      setLoading(false);
+      const cached = await loadSpotsOfflineSnapshot(center.latitude, center.longitude, filterTypes);
+      if (cached) {
+        rows = cached;
+        setFromOfflineCache(true);
+      } else if (online) {
+        const message = err instanceof Error ? err.message : String(err);
+        Alert.alert(t('list.loadErrorTitle'), `${message}\n${t('offline.networkErrorNoCache')}`);
+      }
     }
+
+    if (!online && rows.length === 0) {
+      Alert.alert(t('offline.noCacheTitle'), t('offline.noCacheMessage'));
+    }
+
+    const base = parseSpotsFromNearbyRows(rows);
+    const parsed = base
+      .map((b) => ({
+        ...b,
+        distanceKm: haversineDistanceKm(center, { latitude: b.latitude, longitude: b.longitude }),
+      }))
+      .sort((a, b) => a.distanceKm - b.distanceKm);
+
+    setSpots(parsed);
+    setLoading(false);
   }, [filterTypes, t]);
 
   useEffect(() => {
@@ -122,6 +137,7 @@ export default function ListScreen() {
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('list.subtitle')}</Text>
         <View style={styles.row}>
           <Badge label={permissionLabel} variant={permissionStatus === 'granted' ? 'success' : 'warning'} />
+          {fromOfflineCache ? <Badge label={t('offline.badge')} variant="farm" /> : null}
           <Badge label={t('list.results', { count: spots.length })} variant="service" />
           {userLocation ? (
             <Badge label={`${userLocation.latitude.toFixed(3)}, ${userLocation.longitude.toFixed(3)}`} variant="default" />

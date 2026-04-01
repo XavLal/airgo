@@ -39,6 +39,12 @@
     "all": "Tous",
     "types": "Filtrer"
   },
+  "offline": {
+    "badge": "Hors ligne — cache local",
+    "noCacheTitle": "Pas de données en cache",
+    "noCacheMessage": "Connecte-toi une fois au réseau sur cette zone pour enregistrer les aires et les consulter hors ligne.",
+    "networkErrorNoCache": "Aucun cache pour cette zone ou ce filtre."
+  },
   "list": {
     "title": "Liste des aires",
     "subtitle": "Triée par proximité (rayon 50 km)",
