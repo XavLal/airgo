@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import MapView from 'react-native-map-clustering';
 import { Marker, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -24,6 +25,7 @@ type SpotMarker = {
 
 export default function MapScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const [permissionStatus, setPermissionStatus] = useState<Location.PermissionStatus | null>(null);
   const [region, setRegion] = useState<Region>(DEFAULT_REGION);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -163,6 +165,18 @@ export default function MapScreen() {
             title={spot.name}
             description={spot.type}
             pinColor={colors.service}
+            onCalloutPress={() =>
+              router.push({
+                pathname: '/spot/[id]',
+                params: {
+                  id: spot.id,
+                  name: spot.name,
+                  type: spot.type,
+                  lat: String(spot.latitude),
+                  lng: String(spot.longitude),
+                },
+              })
+            }
           />
         ))}
       </MapView>

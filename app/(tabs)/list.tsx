@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { Badge, Button, Card, ScreenContainer } from '../../src/components/ui';
 import { supabase } from '../../src/lib/supabase';
@@ -39,6 +40,7 @@ function haversineDistanceKm(
 
 export default function ListScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const [permissionStatus, setPermissionStatus] = useState<Location.PermissionStatus | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -163,6 +165,23 @@ export default function ListScreen() {
                 <Badge label={item.type} variant="service" />
                 <Badge label={`${item.distanceKm.toFixed(1)} km`} variant="parking" />
               </View>
+              <Button
+                label="Voir la fiche"
+                size="sm"
+                variant="secondary"
+                onPress={() =>
+                  router.push({
+                    pathname: '/spot/[id]',
+                    params: {
+                      id: item.id,
+                      name: item.name,
+                      type: item.type,
+                      lat: String(item.latitude),
+                      lng: String(item.longitude),
+                    },
+                  })
+                }
+              />
             </Card>
           )}
           ListEmptyComponent={
