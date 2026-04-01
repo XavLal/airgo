@@ -16,6 +16,9 @@ export default function ProfileScreen() {
   const [loadingSend, setLoadingSend] = useState(false);
   const [loadingVerify, setLoadingVerify] = useState(false);
   const [loadingLogout, setLoadingLogout] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [profile, setProfile] = useState<{ pseudo: string | null; trust_points: number | null; created_at: string | null } | null>(null);
+  const [contributions, setContributions] = useState({ spots: 0, reviews: 0, photos: 0 });
 
   useEffect(() => {
     let mounted = true;
@@ -50,6 +53,57 @@ export default function ProfileScreen() {
   }, []);
 
   const emailIsValid = useMemo(() => /\S+@\S+\.\S+/.test(email.trim()), [email]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setProfile(null);
+      setContributions({ spots: 0, reviews: 0, photos: 0 });
+      return;
+    }
+    loadProfileAndContributions(user.id);
+  }, [user?.id]);
+
+  async function countFromTable(table: 'spots' | 'reviews' | 'photos', columnCandidates: string[], userId: string) {
+    for (const column of columnCandidates) {
+      const { count, error } = await supabase
+        .from(table)
+        .select('*', { count: 'exact', head: true })
+        .eq(column, userId);
+
+      if (!error) return count ?? 0;
+    }
+    return 0;
+  }
+
+  async function loadProfileAndContributions(userId: string) {
+    setLoadingProfile(true);
+
+    const profileReq = supabase
+      .from('profiles')
+      .select('pseudo, trust_points, created_at')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const spotsReq = countFromTable('spots', ['created_by'], userId);
+    const reviewsReq = countFromTable('reviews', ['user_id', 'created_by'], userId);
+    const photosReq = countFromTable('photos', ['user_id', 'created_by'], userId);
+
+    const [profileRes, spots, reviews, photos] = await Promise.all([profileReq, spotsReq, reviewsReq, photosReq]);
+
+    if (profileRes.error) {
+      Alert.alert('Profil', `Impossible de charger le profil: ${profileRes.error.message}`);
+    } else {
+      setProfile(profileRes.data ?? null);
+    }
+
+    setContributions({
+      spots,
+      reviews,
+      photos,
+    });
+
+    setLoadingProfile(false);
+  }
 
   async function handleSendOtp() {
     if (!emailIsValid) {
@@ -133,6 +187,35 @@ export default function ProfileScreen() {
               <Badge label={user.email ?? 'email inconnu'} variant="default" />
             </View>
             <Separator />
+            {loadingProfile ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={[styles.meta, { color: colors.textSecondary }]}>Chargement du profil...</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={[styles.meta, { color: colors.textSecondary }]}>
+                  Pseudo: {profile?.pseudo || 'Non défini'}
+                </Text>
+                <Text style={[styles.meta, { color: colors.textSecondary }]}>
+                  Points de confiance: {profile?.trust_points ?? 0}
+                </Text>
+                <Text style={[styles.meta, { color: colors.textSecondary }]}>
+                  Inscrit le: {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('fr-FR') : '—'}
+                </Text>
+                <View style={styles.row}>
+                  <Badge label={`Aires: ${contributions.spots}`} variant="service" />
+                  <Badge label={`Avis: ${contributions.reviews}`} variant="parking" />
+                  <Badge label={`Photos: ${contributions.photos}`} variant="farm" />
+                </View>
+                <Button
+                  label="Rafraîchir contributions"
+                  size="sm"
+                  variant="ghost"
+                  onPress={() => loadProfileAndContributions(user.id)}
+                />
+              </>
+            )}
             <Text style={[styles.meta, { color: colors.textSecondary }]}>UID: {user.id}</Text>
             <Button
               label={loadingLogout ? 'Déconnexion...' : 'Se déconnecter'}
