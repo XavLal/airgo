@@ -1,11 +1,15 @@
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
 import { Button, Card, Input, ScreenContainer } from '../src/components/ui';
 import { supabase } from '../src/lib/supabase';
 import { Radius, Spacing, Typography, useTheme } from '../src/theme';
 
 export default function AddSpotScreen() {
+  const { t } = useTranslation();
+  const navigation = useNavigation();
   const { colors } = useTheme();
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
@@ -16,10 +20,14 @@ export default function AddSpotScreen() {
   const [longitude, setLongitude] = useState('');
   const [loading, setLoading] = useState(false);
 
+  useLayoutEffect(() => {
+    navigation.setOptions({ title: t('addSpot.title') });
+  }, [navigation, t]);
+
   const fillCurrentLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission requise', 'Active la geolocalisation pour pre-remplir les coordonnees.');
+      Alert.alert(t('addSpot.permissionTitle'), t('addSpot.permissionMessage'));
       return;
     }
     const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -29,14 +37,14 @@ export default function AddSpotScreen() {
 
   const submitSpot = async () => {
     if (!name.trim() || !type.trim() || !latitude.trim() || !longitude.trim()) {
-      Alert.alert('Champs manquants', 'Nom, type, latitude et longitude sont requis.');
+      Alert.alert(t('addSpot.missingFieldsTitle'), t('addSpot.missingFieldsMessage'));
       return;
     }
 
     const lat = Number(latitude);
     const lng = Number(longitude);
     if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      Alert.alert('Coordonnees invalides', 'Latitude/Longitude doivent etre numeriques.');
+      Alert.alert(t('addSpot.invalidCoordsTitle'), t('addSpot.invalidCoordsMessage'));
       return;
     }
 
@@ -57,49 +65,49 @@ export default function AddSpotScreen() {
 
     setLoading(false);
     if (error) {
-      Alert.alert('Ajout impossible', error.message);
+      Alert.alert(t('addSpot.errorTitle'), error.message);
       return;
     }
 
-    Alert.alert('Aire envoyee', "L'aire a ete creee en non verifiee.");
+    Alert.alert(t('addSpot.successTitle'), t('addSpot.successMessage'));
     setName('');
     setCity('');
     setPostalCode('');
     setDescription('');
     setType('APN');
+    setLatitude('');
+    setLongitude('');
   };
 
   return (
     <ScreenContainer>
       <Card style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.primary }]}>Ajouter une aire</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          L'aire sera creee avec le statut non verifie.
-        </Text>
-        <Input label="Nom" value={name} onChangeText={setName} />
-        <Input label="Ville" value={city} onChangeText={setCity} />
-        <Input label="Code postal" value={postalCode} onChangeText={setPostalCode} />
-        <Input label="Description" value={description} onChangeText={setDescription} />
-        <Input label="Type (AA, AC, APN...)" value={type} onChangeText={setType} autoCapitalize="characters" />
+        <Text style={[styles.title, { color: colors.primary }]}>{t('addSpot.title')}</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('addSpot.subtitle')}</Text>
+        <Input label={t('addSpot.name')} value={name} onChangeText={setName} />
+        <Input label={t('addSpot.city')} value={city} onChangeText={setCity} />
+        <Input label={t('addSpot.postalCode')} value={postalCode} onChangeText={setPostalCode} />
+        <Input label={t('addSpot.description')} value={description} onChangeText={setDescription} />
+        <Input label={t('addSpot.type')} value={type} onChangeText={setType} autoCapitalize="characters" />
 
         <View style={styles.row}>
           <Input
-            label="Latitude"
+            label={t('addSpot.latitude')}
             value={latitude}
             onChangeText={setLatitude}
             keyboardType="decimal-pad"
             style={styles.half}
           />
           <Input
-            label="Longitude"
+            label={t('addSpot.longitude')}
             value={longitude}
             onChangeText={setLongitude}
             keyboardType="decimal-pad"
             style={styles.half}
           />
         </View>
-        <Button label="Utiliser ma position" variant="secondary" onPress={fillCurrentLocation} />
-        <Button label={loading ? 'Envoi...' : "Publier l'aire"} onPress={submitSpot} disabled={loading} fullWidth />
+        <Button label={t('addSpot.useMyLocation')} variant="secondary" onPress={fillCurrentLocation} />
+        <Button label={loading ? t('addSpot.submitting') : t('addSpot.submit')} onPress={submitSpot} disabled={loading} fullWidth />
       </Card>
     </ScreenContainer>
   );

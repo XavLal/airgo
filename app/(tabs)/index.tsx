@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import MapView from 'react-native-map-clustering';
 import { Marker, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
+import { TypeFilterBar } from '../../src/components/TypeFilterBar';
 import { Badge, Button, Card } from '../../src/components/ui';
-import { supabase } from '../../src/lib/supabase';
+import { fetchSpotsNearby } from '../../src/lib/spotsNearbyRpc';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
 
 const DEFAULT_REGION: Region = {
@@ -25,6 +27,7 @@ type SpotMarker = {
 };
 
 export default function MapScreen() {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   const router = useRouter();
   const [permissionStatus, setPermissionStatus] = useState<Location.PermissionStatus | null>(null);
@@ -33,13 +36,14 @@ export default function MapScreen() {
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [spots, setSpots] = useState<SpotMarker[]>([]);
   const [loadingSpots, setLoadingSpots] = useState(false);
+  const [filterTypes, setFilterTypes] = useState<string[] | null>(null);
 
   const hasLocationAccess = permissionStatus === 'granted';
   const permissionLabel = useMemo(() => {
-    if (permissionStatus === null) return 'En attente de permission';
-    if (permissionStatus === 'granted') return 'Permission accordee';
-    return 'Permission refusee';
-  }, [permissionStatus]);
+    if (permissionStatus === null) return t('map.permissionPending');
+    if (permissionStatus === 'granted') return t('map.permissionGranted');
+    return t('map.permissionDenied');
+  }, [permissionStatus, t]);
 
   const requestAndLocate = useCallback(async () => {
     setLoadingLocation(true);
@@ -49,10 +53,7 @@ export default function MapScreen() {
 
     if (status !== 'granted') {
       setLoadingLocation(false);
-      Alert.alert(
-        'Geolocalisation desactivee',
-        "Active la localisation pour centrer la carte sur ta position."
-      );
+      Alert.alert(t('map.geoDisabledTitle'), t('map.geoDisabledMessage'));
       return;
     }
 
@@ -73,65 +74,56 @@ export default function MapScreen() {
     });
     setRegion(nextRegion);
     setLoadingLocation(false);
-  }, []);
+  }, [t]);
 
-  const fetchNearbySpots = useCallback(async (targetRegion: Region) => {
-    setLoadingSpots(true);
+  const fetchNearbySpots = useCallback(
+    async (targetRegion: Region) => {
+      setLoadingSpots(true);
 
-    const payloads = [
-      { p_lat: targetRegion.latitude, p_lng: targetRegion.longitude, p_radius_km: 50 },
-      { lat: targetRegion.latitude, lng: targetRegion.longitude, radius_km: 50 },
-      { latitude: targetRegion.latitude, longitude: targetRegion.longitude, radius_km: 50 },
-    ];
+      try {
+        const rows = await fetchSpotsNearby({
+          latitude: targetRegion.latitude,
+          longitude: targetRegion.longitude,
+          radiusKm: 50,
+          types: filterTypes,
+        });
 
-    let data: unknown[] | null = null;
-    let lastErrorMessage = '';
+        const parsed = rows
+          .map((row) => {
+            const latitude = Number(row.latitude ?? row.lat);
+            const longitude = Number(row.longitude ?? row.lng);
+            const id = String(row.id ?? '');
 
-    for (const payload of payloads) {
-      const { data: res, error } = await supabase.rpc('spots_nearby', payload);
-      if (!error) {
-        data = (res as unknown[]) ?? [];
-        break;
+            if (!id || Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
+
+            return {
+              id,
+              name: String(row.name ?? 'Aire'),
+              type: String(row.type ?? 'OTHER'),
+              latitude,
+              longitude,
+              isVerified: row.is_verified == null ? true : Boolean(row.is_verified),
+            } satisfies SpotMarker;
+          })
+          .filter((value): value is SpotMarker => value !== null);
+
+        setSpots(parsed);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        Alert.alert(t('map.spotsLoadErrorTitle'), message);
+      } finally {
+        setLoadingSpots(false);
       }
-      lastErrorMessage = error.message;
-    }
-
-    if (!data) {
-      setLoadingSpots(false);
-      Alert.alert('Chargement des aires', `RPC spots_nearby indisponible: ${lastErrorMessage}`);
-      return;
-    }
-
-    const parsed = data
-      .map((item) => {
-        const row = item as Record<string, unknown>;
-        const latitude = Number(row.latitude ?? row.lat);
-        const longitude = Number(row.longitude ?? row.lng);
-        const id = String(row.id ?? '');
-
-        if (!id || Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
-
-        return {
-          id,
-          name: String(row.name ?? 'Aire'),
-          type: String(row.type ?? 'OTHER'),
-          latitude,
-          longitude,
-          isVerified: row.is_verified == null ? true : Boolean(row.is_verified),
-        } satisfies SpotMarker;
-      })
-      .filter((value): value is SpotMarker => value !== null);
-
-    setSpots(parsed);
-    setLoadingSpots(false);
-  }, []);
+    },
+    [filterTypes, t],
+  );
 
   useEffect(() => {
     requestAndLocate().catch(() => {
       setLoadingLocation(false);
-      Alert.alert('Erreur localisation', 'Impossible de recuperer votre position.');
+      Alert.alert(t('map.geoErrorTitle'), t('map.geoErrorMessage'));
     });
-  }, [requestAndLocate]);
+  }, [requestAndLocate, t]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -158,7 +150,7 @@ export default function MapScreen() {
         animationEnabled
       >
         {userLocation ? (
-          <Marker coordinate={userLocation} title="Vous etes ici" pinColor={colors.primary} />
+          <Marker coordinate={userLocation} title={t('map.youAreHere')} pinColor={colors.primary} />
         ) : null}
         {spots.map((spot) => (
           <Marker
@@ -186,26 +178,27 @@ export default function MapScreen() {
 
       <View style={styles.overlay}>
         <Card style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]} elevated>
-          <Text style={[styles.title, { color: colors.primary }]}>Carte des aires</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Phase 4: react-native-maps + geolocalisation
-          </Text>
+          <Text style={[styles.title, { color: colors.primary }]}>{t('map.title')}</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('map.subtitle')}</Text>
 
           <View style={styles.row}>
             <Badge label={permissionLabel} variant={hasLocationAccess ? 'success' : 'warning'} />
             {loadingLocation ? <ActivityIndicator color={colors.primary} /> : null}
             {loadingSpots ? <ActivityIndicator color={colors.service} /> : null}
           </View>
-          <Badge label={`${spots.length} aires dans 50 km`} variant="service" />
-          <Badge label="Orange = non verifiee" variant="warning" />
+          <Badge label={t('map.spotsInRadius', { count: spots.length })} variant="service" />
+          <Badge label={t('map.legendUnverified')} variant="warning" />
+
+          <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('map.filtersTitle')}</Text>
+          <TypeFilterBar value={filterTypes} onChange={setFilterTypes} />
 
           <Button
-            label={loadingLocation ? 'Localisation...' : 'Recentrer sur ma position'}
+            label={loadingLocation ? t('map.locating') : t('map.recenter')}
             onPress={requestAndLocate}
             disabled={loadingLocation}
             fullWidth
           />
-          <Button label="Ajouter une aire" variant="secondary" onPress={() => router.push('/add-spot')} fullWidth />
+          <Button label={t('map.addSpot')} variant="secondary" onPress={() => router.push('/add-spot')} fullWidth />
         </Card>
       </View>
     </View>
@@ -219,6 +212,7 @@ const styles = StyleSheet.create({
     top: Spacing.xxl + Spacing.sm,
     left: Spacing.lg,
     right: Spacing.lg,
+    maxHeight: '55%',
   },
   panel: {
     gap: Spacing.sm,
@@ -226,9 +220,16 @@ const styles = StyleSheet.create({
   },
   title: { ...Typography.title },
   subtitle: { ...Typography.subtitle },
+  filterLabel: {
+    ...Typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: Spacing.xs,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    flexWrap: 'wrap',
   },
 });

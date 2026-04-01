@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
+import { TypeFilterBar } from '../../src/components/TypeFilterBar';
 import { Badge, Button, Card, ScreenContainer } from '../../src/components/ui';
-import { supabase } from '../../src/lib/supabase';
+import { fetchSpotsNearby } from '../../src/lib/spotsNearbyRpc';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
 
 type SpotRow = {
@@ -14,11 +16,6 @@ type SpotRow = {
   longitude: number;
   distanceKm: number;
   isVerified: boolean;
-};
-
-const DEFAULT_CENTER = {
-  latitude: 46.2276,
-  longitude: 2.2137,
 };
 
 function haversineDistanceKm(
@@ -40,18 +37,20 @@ function haversineDistanceKm(
 }
 
 export default function ListScreen() {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   const router = useRouter();
   const [permissionStatus, setPermissionStatus] = useState<Location.PermissionStatus | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [spots, setSpots] = useState<SpotRow[]>([]);
+  const [filterTypes, setFilterTypes] = useState<string[] | null>(null);
 
   const permissionLabel = useMemo(() => {
-    if (permissionStatus === null) return 'Permission en attente';
-    if (permissionStatus === 'granted') return 'Permission accordee';
-    return 'Permission refusee';
-  }, [permissionStatus]);
+    if (permissionStatus === null) return t('map.permissionPending');
+    if (permissionStatus === 'granted') return t('map.permissionGranted');
+    return t('map.permissionDenied');
+  }, [permissionStatus, t]);
 
   const loadNearbyList = useCallback(async () => {
     setLoading(true);
@@ -60,7 +59,7 @@ export default function ListScreen() {
     setPermissionStatus(status);
     if (status !== 'granted') {
       setLoading(false);
-      Alert.alert('Geolocalisation', 'Permission requise pour trier par proximite.');
+      Alert.alert(t('list.permissionNeededTitle'), t('list.permissionNeededMessage'));
       return;
     }
 
@@ -71,87 +70,80 @@ export default function ListScreen() {
     };
     setUserLocation(center);
 
-    const payloads = [
-      { p_lat: center.latitude, p_lng: center.longitude, p_radius_km: 50 },
-      { lat: center.latitude, lng: center.longitude, radius_km: 50 },
-      { latitude: center.latitude, longitude: center.longitude, radius_km: 50 },
-    ];
+    try {
+      const rows = await fetchSpotsNearby({
+        latitude: center.latitude,
+        longitude: center.longitude,
+        radiusKm: 50,
+        types: filterTypes,
+      });
 
-    let data: unknown[] | null = null;
-    let lastError = '';
-    for (const payload of payloads) {
-      const { data: res, error } = await supabase.rpc('spots_nearby', payload);
-      if (!error) {
-        data = (res as unknown[]) ?? [];
-        break;
-      }
-      lastError = error.message;
-    }
+      const parsed = rows
+        .map((row) => {
+          const latitude = Number(row.latitude ?? row.lat);
+          const longitude = Number(row.longitude ?? row.lng);
+          const id = String(row.id ?? '');
+          if (!id || Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
 
-    if (!data) {
+          const distanceKm = haversineDistanceKm(center, { latitude, longitude });
+          return {
+            id,
+            name: String(row.name ?? 'Aire'),
+            type: String(row.type ?? 'OTHER'),
+            latitude,
+            longitude,
+            distanceKm,
+            isVerified: row.is_verified == null ? true : Boolean(row.is_verified),
+          } satisfies SpotRow;
+        })
+        .filter((item): item is SpotRow => item !== null)
+        .sort((a, b) => a.distanceKm - b.distanceKm);
+
+      setSpots(parsed);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      Alert.alert(t('list.loadErrorTitle'), message);
+    } finally {
       setLoading(false);
-      Alert.alert('Liste des aires', `RPC spots_nearby indisponible: ${lastError}`);
-      return;
     }
-
-    const parsed = data
-      .map((item) => {
-        const row = item as Record<string, unknown>;
-        const latitude = Number(row.latitude ?? row.lat);
-        const longitude = Number(row.longitude ?? row.lng);
-        const id = String(row.id ?? '');
-        if (!id || Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
-
-        const distanceKm = haversineDistanceKm(center, { latitude, longitude });
-        return {
-          id,
-          name: String(row.name ?? 'Aire'),
-          type: String(row.type ?? 'OTHER'),
-          latitude,
-          longitude,
-          distanceKm,
-          isVerified: row.is_verified == null ? true : Boolean(row.is_verified),
-        } satisfies SpotRow;
-      })
-      .filter((item): item is SpotRow => item !== null)
-      .sort((a, b) => a.distanceKm - b.distanceKm);
-
-    setSpots(parsed);
-    setLoading(false);
-  }, []);
+  }, [filterTypes, t]);
 
   useEffect(() => {
     loadNearbyList().catch(() => {
       setLoading(false);
-      Alert.alert('Erreur', 'Impossible de charger la liste des aires.');
+      Alert.alert(t('common.error'), t('list.genericError'));
     });
-  }, [loadNearbyList]);
+  }, [loadNearbyList, t]);
 
   return (
     <ScreenContainer style={styles.container}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.primary }]}>Liste des aires</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Triee par proximite (rayon 50 km)</Text>
+        <Text style={[styles.title, { color: colors.primary }]}>{t('list.title')}</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('list.subtitle')}</Text>
         <View style={styles.row}>
           <Badge label={permissionLabel} variant={permissionStatus === 'granted' ? 'success' : 'warning'} />
-          <Badge label={`${spots.length} resultats`} variant="service" />
+          <Badge label={t('list.results', { count: spots.length })} variant="service" />
           {userLocation ? (
             <Badge label={`${userLocation.latitude.toFixed(3)}, ${userLocation.longitude.toFixed(3)}`} variant="default" />
           ) : null}
         </View>
+
+        <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('map.filtersTitle')}</Text>
+        <TypeFilterBar value={filterTypes} onChange={setFilterTypes} />
+
         <Button
-          label={loading ? 'Actualisation...' : 'Actualiser la liste'}
+          label={loading ? t('list.refreshing') : t('list.refresh')}
           onPress={loadNearbyList}
           disabled={loading}
           fullWidth
         />
-        <Button label="Ajouter une aire" variant="secondary" onPress={() => router.push('/add-spot')} fullWidth />
+        <Button label={t('list.addSpot')} variant="secondary" onPress={() => router.push('/add-spot')} fullWidth />
       </View>
 
       {loading ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Chargement des aires...</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('list.loadingSpots')}</Text>
         </View>
       ) : (
         <FlatList
@@ -167,10 +159,10 @@ export default function ListScreen() {
               <View style={styles.row}>
                 <Badge label={item.type} variant="service" />
                 <Badge label={`${item.distanceKm.toFixed(1)} km`} variant="parking" />
-                {!item.isVerified ? <Badge label="Non verifiee" variant="warning" /> : null}
+                {!item.isVerified ? <Badge label={t('list.unverified')} variant="warning" /> : null}
               </View>
               <Button
-                label="Voir la fiche"
+                label={t('list.seeDetail')}
                 size="sm"
                 variant="secondary"
                 onPress={() =>
@@ -191,7 +183,7 @@ export default function ListScreen() {
           )}
           ListEmptyComponent={
             <View style={styles.loadingWrap}>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aucune aire trouvee dans 50 km.</Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('list.empty')}</Text>
             </View>
           }
         />
@@ -208,6 +200,11 @@ const styles = StyleSheet.create({
   },
   title: { ...Typography.title },
   subtitle: { ...Typography.subtitle },
+  filterLabel: {
+    ...Typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
   row: {
     flexDirection: 'row',
     gap: Spacing.sm,
