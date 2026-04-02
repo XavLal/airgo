@@ -11,7 +11,9 @@ import { ThemeProvider, useTheme } from '../src/theme';
 export default function RootLayout() {
   useEffect(() => {
     if (Platform.OS !== 'web') {
-      void bootstrapLocalSpotsData();
+      void bootstrapLocalSpotsData().catch((e) =>
+        console.warn('Bootstrap base locale des aires impossible', e),
+      );
     }
   }, []);
 

@@ -1,11 +1,15 @@
 import type { MapBounds } from '../mapRegionBounds';
 import { haversineKm, regionToBounds } from '../mapRegionBounds';
 import type { Region } from 'react-native-maps';
-import { getSpotsDatabase, isRtreeEnabled } from './client';
+import { getSpotsDatabase, isRtreeEnabledOnDb, withSerializedDb } from './client';
 import type { SpotPackRow } from './spotTypes';
 
-/** Max de points issus de SQLite pour alimenter supercluster (hors state global du catalogue). */
-export const VIEWPORT_QUERY_HARD_CAP = 8000;
+/**
+ * Max de points issus de SQLite pour alimenter supercluster.
+ * Doit couvrir tout le jeu importé (~24k) + marge (sync Supabase), sinon des POI disparaissent sur les bords du viewport
+ * quand on trie par distance au centre avec un plafond trop bas.
+ */
+export const VIEWPORT_QUERY_HARD_CAP = 50000;
 
 type RawSpot = {
   spot_id: string;
@@ -46,48 +50,50 @@ function typeFilterClause(filterTypes: string[] | null): { sql: string; params: 
 }
 
 /**
- * Rectangle visible + filtres ; tri par distance au centre ; limite `maxRows` (après tri).
+ * Rectangle visible + filtres. Tri par (lat, lng) pour répartir le sous-ensemble si plafond atteint ;
+ * évite le tri « plus proches du centre » qui vidait les bords de l’écran quand la bbox contenait plus de `maxRows` points.
  */
 export async function querySpotsInViewport(
   bounds: MapBounds,
   filterTypes: string[] | null,
   maxRows: number,
 ): Promise<SpotPackRow[]> {
-  const db = await getSpotsDatabase();
-  const finalCap = Math.min(Math.max(1, maxRows), VIEWPORT_QUERY_HARD_CAP);
-  const { west, east, south, north, centerLat, centerLng } = bounds;
-  const { sql: typeSql, params: typeParams } = typeFilterClause(filterTypes);
+  return withSerializedDb(async () => {
+    const db = await getSpotsDatabase();
+    const finalCap = Math.min(Math.max(1, maxRows), VIEWPORT_QUERY_HARD_CAP);
+    const { west, east, south, north } = bounds;
+    const { sql: typeSql, params: typeParams } = typeFilterClause(filterTypes);
 
-  const useRtree = await isRtreeEnabled();
+    const useRtree = await isRtreeEnabledOnDb(db);
 
-  /** Même bbox + ORDER BY → sous-ensemble stable ; distance² grossière au centre puis spot_id. */
-  const orderAndLimit = ` ORDER BY ((p.lat - ?) * (p.lat - ?) + (p.lng - ?) * (p.lng - ?)) ASC, p.spot_id ASC LIMIT ?`;
-  const orderParams = [centerLat, centerLat, centerLng, centerLng, finalCap];
+    const orderAndLimit = ` ORDER BY p.lat ASC, p.lng ASC, p.spot_id ASC LIMIT ?`;
+    const orderParams = [finalCap];
 
-  let raw: RawSpot[];
+    let raw: RawSpot[];
 
-  if (useRtree) {
-    raw =
-      (await db.getAllAsync<RawSpot>(
-        `SELECT spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, updated_at
+    if (useRtree) {
+      raw =
+        (await db.getAllAsync<RawSpot>(
+          `SELECT spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, updated_at
          FROM spots_pack p
          JOIN spots_rtree r ON p.pk = r.id
          WHERE r.minX <= ? AND r.maxX >= ? AND r.minY <= ? AND r.maxY >= ?
          ${typeSql}${orderAndLimit}`,
-        [east, west, north, south, ...typeParams, ...orderParams],
-      )) ?? [];
-  } else {
-    raw =
-      (await db.getAllAsync<RawSpot>(
-        `SELECT spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, updated_at
+          [east, west, north, south, ...typeParams, ...orderParams],
+        )) ?? [];
+    } else {
+      raw =
+        (await db.getAllAsync<RawSpot>(
+          `SELECT spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, updated_at
          FROM spots_pack p
          WHERE p.lng >= ? AND p.lng <= ? AND p.lat >= ? AND p.lat <= ?
          ${typeSql}${orderAndLimit}`,
-        [west, east, south, north, ...typeParams, ...orderParams],
-      )) ?? [];
-  }
+          [west, east, south, north, ...typeParams, ...orderParams],
+        )) ?? [];
+    }
 
-  return raw.map(toRow);
+    return raw.map(toRow);
+  });
 }
 
 /**

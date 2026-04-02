@@ -1,5 +1,5 @@
 import * as BackgroundFetch from 'expo-background-fetch';
-import { Platform } from 'react-native';
+import { InteractionManager, Platform } from 'react-native';
 import { SPOT_DELTA_SYNC_TASK } from '../../tasks/spotSyncTask';
 import { getIsOnline } from '../networkStatus';
 import { countLocalSpots, getSpotsDatabase, getSyncMeta } from './client';
@@ -36,7 +36,16 @@ export async function bootstrapLocalSpotsData(): Promise<void> {
   const ascPending = (await getSyncMeta(META_ASC_BOOTSTRAP_PENDING)) === '1';
 
   if (online && n > 0 && !ascPending) {
-    void runDeltaSpotSyncFromSupabase().catch((e) => console.warn('Delta sync (premier plan)', e));
+    /**
+     * Ne pas lancer le delta en parallèle immédiat des lectures carte (querySpotsInViewport) : sur Android,
+     * expo-sqlite mélange connexion principale + withExclusiveTransactionAsync du sync → crash natif (Scudo /
+     * closeDatabase). On attend la fin des interactions UI puis un court délai.
+     */
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        void runDeltaSpotSyncFromSupabase().catch((e) => console.warn('Delta sync (premier plan)', e));
+      }, 2500);
+    });
   }
 
   try {

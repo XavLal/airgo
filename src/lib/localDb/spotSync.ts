@@ -1,10 +1,15 @@
 import type * as SQLite from 'expo-sqlite';
 import { Asset } from 'expo-asset';
-import { Platform } from 'react-native';
 import { parsePostgisEwkbPoint2dHex } from '../parsePostgisEwkbHex';
 import { supabase } from '../supabase';
 import { parseAscSpotLine } from './ascSpotLine';
-import { getSpotsDatabase, getSyncMeta, isRtreeEnabled, setSyncMeta } from './client';
+import {
+  getSpotsDatabase,
+  getSyncMeta,
+  isRtreeEnabledOnDb,
+  setSyncMeta,
+  withSerializedDb,
+} from './client';
 import { emitSpotsLocalDbChanged } from './spotSyncEvents';
 import type { PackInsert } from './spotSyncTypes';
 
@@ -20,19 +25,14 @@ const META_FULL_SYNC = 'initial_full_sync_done';
 const META_LAST_DELTA = 'last_delta_sync_at';
 
 /**
- * withTransactionAsync n’est pas exclusive : d’autres await sur la même DB (carte, métas…)
- * peuvent s’intercaler → COMMIT/ROLLBACK invalide (« cannot rollback - no transaction is active »).
- * Toutes les écritures lotées passent par txn / cette fonction.
+ * Transaction sur la connexion principale (pas `withExclusiveTransactionAsync` : 2e connexion → crash Android).
+ * À appeler uniquement **dans** un bloc `withSerializedDb` déjà ouvert par l’appelant.
  */
 async function runExclusiveWrite(
   db: SQLite.SQLiteDatabase,
   task: (writer: SQLite.SQLiteDatabase) => Promise<void>,
 ): Promise<void> {
-  if (Platform.OS === 'web') {
-    await db.withTransactionAsync(async () => task(db));
-    return;
-  }
-  await db.withExclusiveTransactionAsync(async (txn) => task(txn));
+  await db.withTransactionAsync(async () => task(db));
 }
 
 /**
@@ -147,10 +147,12 @@ async function upsertPackRowInner(db: SQLite.SQLiteDatabase, rtree: boolean, pac
 }
 
 async function upsertPackRow(pack: PackInsert): Promise<void> {
-  const db = await getSpotsDatabase();
-  const rtree = await isRtreeEnabled();
-  await runExclusiveWrite(db, async (w) => {
-    await upsertPackRowInner(w, rtree, pack);
+  await withSerializedDb(async () => {
+    const db = await getSpotsDatabase();
+    const rtree = await isRtreeEnabledOnDb(db);
+    await runExclusiveWrite(db, async (w) => {
+      await upsertPackRowInner(w, rtree, pack);
+    });
   });
 }
 
@@ -163,18 +165,22 @@ async function deleteLocalSpotBySpotIdInner(db: SQLite.SQLiteDatabase, rtree: bo
 }
 
 async function deleteLocalSpotBySpotId(spotId: string): Promise<void> {
-  const db = await getSpotsDatabase();
-  const rtree = await isRtreeEnabled();
-  await runExclusiveWrite(db, async (w) => {
-    await deleteLocalSpotBySpotIdInner(w, rtree, spotId);
+  await withSerializedDb(async () => {
+    const db = await getSpotsDatabase();
+    const rtree = await isRtreeEnabledOnDb(db);
+    await runExclusiveWrite(db, async (w) => {
+      await deleteLocalSpotBySpotIdInner(w, rtree, spotId);
+    });
   });
 }
 
 async function clearLocalSpots(): Promise<void> {
-  const db = await getSpotsDatabase();
-  await runExclusiveWrite(db, async (w) => {
-    await w.runAsync('DELETE FROM spots_rtree');
-    await w.runAsync('DELETE FROM spots_pack');
+  await withSerializedDb(async () => {
+    const db = await getSpotsDatabase();
+    await runExclusiveWrite(db, async (w) => {
+      await w.runAsync('DELETE FROM spots_rtree');
+      await w.runAsync('DELETE FROM spots_pack');
+    });
   });
 }
 
@@ -213,16 +219,18 @@ export async function runFullSpotSyncFromSupabase(): Promise<void> {
       if (pack) packs.push(pack);
     }
 
-    const db = await getSpotsDatabase();
-    const rtree = await isRtreeEnabled();
-    for (let i = 0; i < packs.length; i += SQLITE_TX_CHUNK) {
-      const chunk = packs.slice(i, i + SQLITE_TX_CHUNK);
-      await runExclusiveWrite(db, async (w) => {
-        for (const pack of chunk) {
-          await upsertPackRowInner(w, rtree, pack);
-        }
-      });
-    }
+    await withSerializedDb(async () => {
+      const db = await getSpotsDatabase();
+      const rtree = await isRtreeEnabledOnDb(db);
+      for (let i = 0; i < packs.length; i += SQLITE_TX_CHUNK) {
+        const chunk = packs.slice(i, i + SQLITE_TX_CHUNK);
+        await runExclusiveWrite(db, async (w) => {
+          for (const pack of chunk) {
+            await upsertPackRowInner(w, rtree, pack);
+          }
+        });
+      }
+    });
 
     offset += rows.length;
     if (rows.length < PAGE_SIZE) break;
@@ -268,16 +276,18 @@ export async function runInitialSeedFromBundledAsc(): Promise<boolean> {
 
   if (packs.length === 0) return false;
 
-  const db = await getSpotsDatabase();
-  const rtree = await isRtreeEnabled();
-  for (let i = 0; i < packs.length; i += SQLITE_TX_CHUNK) {
-    const chunk = packs.slice(i, i + SQLITE_TX_CHUNK);
-    await runExclusiveWrite(db, async (w) => {
-      for (const pack of chunk) {
-        await upsertPackRowInner(w, rtree, pack);
-      }
-    });
-  }
+  await withSerializedDb(async () => {
+    const db = await getSpotsDatabase();
+    const rtree = await isRtreeEnabledOnDb(db);
+    for (let i = 0; i < packs.length; i += SQLITE_TX_CHUNK) {
+      const chunk = packs.slice(i, i + SQLITE_TX_CHUNK);
+      await runExclusiveWrite(db, async (w) => {
+        for (const pack of chunk) {
+          await upsertPackRowInner(w, rtree, pack);
+        }
+      });
+    }
+  });
 
   await setSyncMeta(META_ASC_BOOTSTRAP_PENDING, '1');
   emitSpotsLocalDbChanged();
@@ -320,30 +330,32 @@ export async function runDeltaSpotSyncFromSupabase(): Promise<void> {
     const rows = (data ?? []) as Record<string, unknown>[];
     if (rows.length === 0) break;
 
-    const db = await getSpotsDatabase();
-    const rtree = await isRtreeEnabled();
-    for (let c = 0; c < rows.length; c += SQLITE_TX_CHUNK) {
-      const chunk = rows.slice(c, c + SQLITE_TX_CHUNK);
-      await runExclusiveWrite(db, async (w) => {
-        for (const raw of chunk) {
-          const spotId = String(raw.id ?? '');
-          if (!spotId) continue;
+    await withSerializedDb(async () => {
+      const db = await getSpotsDatabase();
+      const rtree = await isRtreeEnabledOnDb(db);
+      for (let c = 0; c < rows.length; c += SQLITE_TX_CHUNK) {
+        const chunk = rows.slice(c, c + SQLITE_TX_CHUNK);
+        await runExclusiveWrite(db, async (w) => {
+          for (const raw of chunk) {
+            const spotId = String(raw.id ?? '');
+            if (!spotId) continue;
 
-          if (isSoftDeletedRow(raw)) {
-            await deleteLocalSpotBySpotIdInner(w, rtree, spotId);
-            const wm = rowWatermark(raw);
-            if (wm > maxSeen) maxSeen = wm;
-            continue;
-          }
+            if (isSoftDeletedRow(raw)) {
+              await deleteLocalSpotBySpotIdInner(w, rtree, spotId);
+              const wm = rowWatermark(raw);
+              if (wm > maxSeen) maxSeen = wm;
+              continue;
+            }
 
-          const pack = rowToPack(raw);
-          if (pack) {
-            await upsertPackRowInner(w, rtree, pack);
-            if (pack.updatedAt > maxSeen) maxSeen = pack.updatedAt;
+            const pack = rowToPack(raw);
+            if (pack) {
+              await upsertPackRowInner(w, rtree, pack);
+              if (pack.updatedAt > maxSeen) maxSeen = pack.updatedAt;
+            }
           }
-        }
-      });
-    }
+        });
+      }
+    });
 
     offset += rows.length;
     if (rows.length < PAGE_SIZE) break;
