@@ -40,7 +40,13 @@
     "downloadZoneEmpty": "Aucune aire renvoyée pour cette zone à ce niveau de zoom.",
     "downloadZoneSuccessTitle": "Zone enregistrée",
     "downloadZoneSuccessMessage": "{{count}} aires enregistrées pour une utilisation hors ligne (rayon API ~ {{radius}} km).",
-    "downloadZoneErrorTitle": "Téléchargement impossible"
+    "downloadZoneErrorTitle": "Téléchargement impossible",
+    "syncFromServer": "Mettre à jour depuis Supabase",
+    "syncRunning": "Synchronisation…",
+    "syncDone": "Données locales mises à jour.",
+    "syncZeroRowsHint": "La synchronisation s’est terminée mais aucune aire n’a été enregistrée. Vérifie les politiques RLS sur la table spots (lecture anonyme), la présence de latitude/longitude ou d’une géométrie lisible, et que la table n’est pas vide.",
+    "localIndexHint": "{{inView}} point(s) chargés pour la vue — {{total}} aires en base locale.",
+    "localIndexEmpty": "Aucune aire en base locale : connexion requise pour la première importation."
   },
   "filters": {
     "all": "Tous",

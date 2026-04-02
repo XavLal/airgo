@@ -1,21 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
-import MapView from 'react-native-map-clustering';
-import { Marker, type Region } from 'react-native-maps';
+import MapView, { Marker, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { TypeFilterBar } from '../../src/components/TypeFilterBar';
 import { Badge, Button, Card } from '../../src/components/ui';
 import SpotIcon, { type SpotType } from '../../src/components/SpotIcon';
 import { SPOT_TYPE_CODES } from '../../src/constants/spotTypes';
-import { clampDownloadRadiusKm, coverageRadiusKmForRegion, regionToBounds } from '../../src/lib/mapRegionBounds';
+import { countLocalSpots } from '../../src/lib/localDb/client';
+import { querySpotsInViewport, VIEWPORT_QUERY_HARD_CAP } from '../../src/lib/localDb/spotQueries';
+import { onSpotsLocalDbChanged } from '../../src/lib/localDb/spotSyncEvents';
+import { runDeltaSpotSyncFromSupabase, runFullSpotSyncFromSupabase } from '../../src/lib/localDb/spotSync';
+import { buildClusterIndex, spotsToFeatures, zoomFromRegion } from '../../src/lib/mapClusterHelpers';
+import type { Feature, Point } from 'geojson';
+import { regionToBounds } from '../../src/lib/mapRegionBounds';
 import { getIsOnline } from '../../src/lib/networkStatus';
-import { MAP_VIEW_MAX_MARKERS, prepareMapSpotsFromRows } from '../../src/lib/mapSpotsViewport';
-import { loadViewportCacheRows, saveViewportCache } from '../../src/lib/mapViewportCache';
 import type { ParsedSpotBase } from '../../src/lib/parseSpotRows';
-import { loadSpotsOfflineSnapshot, saveSpotsOfflineSnapshot } from '../../src/lib/spotsOfflineCache';
-import { fetchSpotsNearby, type NearbySpotRow } from '../../src/lib/spotsNearbyRpc';
 import { DarkColors, Radius, Spacing, Typography, useTheme } from '../../src/theme';
 
 const DEFAULT_REGION: Region = {
@@ -25,10 +26,29 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 7.5,
 };
 
-/** Marqueurs carte : filtrés au viewport, triés par distance (voir mapSpotsViewport). */
+/** Évite une bbox dégénérée (delta 0) que Google Maps envoie parfois sur Android : requête SQLite vide. */
+const MIN_DELTA = 0.005;
+
+function withMinimumDeltas(r: Region): Region {
+  return {
+    ...r,
+    latitudeDelta: Math.max(r.latitudeDelta, MIN_DELTA),
+    longitudeDelta: Math.max(r.longitudeDelta, MIN_DELTA),
+  };
+}
+
 type SpotMarker = ParsedSpotBase;
 
-const MAP_RPC_FETCH_LIMIT = 400;
+function packToMarker(spotId: string, name: string, type: string, lat: number, lng: number, isVerified: boolean): SpotMarker {
+  return {
+    id: spotId,
+    name,
+    type,
+    latitude: lat,
+    longitude: lng,
+    isVerified,
+  };
+}
 
 const MapSpotMarker = React.memo(function MapSpotMarker({
   spotId,
@@ -88,22 +108,32 @@ export default function MapScreen() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const router = useRouter();
+  const mapRef = useRef<MapView>(null);
+  const clusterIndexRef = useRef<ReturnType<typeof buildClusterIndex> | null>(null);
+  const viewportGenRef = useRef(0);
+  const spotsRef = useRef<ParsedSpotBase[]>([]);
+  const regionRef = useRef<Region>(DEFAULT_REGION);
+
   const [permissionStatus, setPermissionStatus] = useState<Location.PermissionStatus | null>(null);
   const [region, setRegion] = useState<Region>(DEFAULT_REGION);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
-  const [spots, setSpots] = useState<SpotMarker[]>([]);
+  const [clusters, setClusters] = useState<Feature<Point>[]>([]);
+  const [viewportRowCount, setViewportRowCount] = useState(0);
+  const [localSpotCount, setLocalSpotCount] = useState<number | null>(null);
   const [loadingSpots, setLoadingSpots] = useState(false);
   const [filterTypes, setFilterTypes] = useState<string[] | null>(null);
-  const [downloadingZone, setDownloadingZone] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
-  const spotsFetchGenRef = useRef(0);
-  const spotsRef = useRef<SpotMarker[]>([]);
-  spotsRef.current = spots;
+
+  regionRef.current = region;
+
+  const onRegionChangeComplete = useCallback((r: Region) => {
+    setRegion(withMinimumDeltas(r));
+  }, []);
 
   const hasLocationAccess = permissionStatus === 'granted';
 
-  /** Fond d’épingle clair pour contraster avec la carte (surface blanche en thème clair, quasi-blanc en sombre). */
   const mapPinFill = useMemo(
     () => (colors.background === DarkColors.background ? '#F0F7F2' : colors.surface),
     [colors.background, colors.surface],
@@ -113,37 +143,6 @@ export default function MapScreen() {
     const hasKnownCode = (SPOT_TYPE_CODES as readonly string[]).includes(type);
     return (hasKnownCode ? type : 'OTHER') as SpotType;
   }, []);
-
-  const requestAndLocate = useCallback(async () => {
-    setLoadingLocation(true);
-
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    setPermissionStatus(status);
-
-    if (status !== 'granted') {
-      setLoadingLocation(false);
-      Alert.alert(t('map.geoDisabledTitle'), t('map.geoDisabledMessage'));
-      return;
-    }
-
-    const current = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
-
-    const nextRegion: Region = {
-      latitude: current.coords.latitude,
-      longitude: current.coords.longitude,
-      latitudeDelta: 0.08,
-      longitudeDelta: 0.08,
-    };
-
-    setUserLocation({
-      latitude: current.coords.latitude,
-      longitude: current.coords.longitude,
-    });
-    setRegion(nextRegion);
-    setLoadingLocation(false);
-  }, [t]);
 
   const handleOpenSpot = useCallback(
     (id: string) => {
@@ -164,119 +163,135 @@ export default function MapScreen() {
     [router],
   );
 
-  const fetchNearbySpots = useCallback(
+  const refreshViewport = useCallback(
     async (targetRegion: Region) => {
-      const fetchId = ++spotsFetchGenRef.current;
+      if (Platform.OS === 'web') {
+        setClusters([]);
+        setViewportRowCount(0);
+        return;
+      }
+
+      const gen = ++viewportGenRef.current;
       setLoadingSpots(true);
 
       try {
-        const lat = targetRegion.latitude;
-        const lng = targetRegion.longitude;
-        let rows: NearbySpotRow[] = [];
+        const total = await countLocalSpots();
+        if (gen === viewportGenRef.current) setLocalSpotCount(total);
 
-        const online = await getIsOnline();
-
-        const radiusKm = clampDownloadRadiusKm(coverageRadiusKmForRegion(targetRegion));
-
-        try {
-          if (online) {
-            const viewportCached = await loadViewportCacheRows(targetRegion, filterTypes);
-            if (viewportCached != null) {
-              rows = viewportCached;
-            } else {
-              rows = await fetchSpotsNearby({
-                latitude: lat,
-                longitude: lng,
-                radiusKm,
-                types: filterTypes,
-                limit: MAP_RPC_FETCH_LIMIT,
-              });
-              await saveViewportCache(targetRegion, filterTypes, lat, lng, radiusKm, rows);
-              if (rows.length > 0) {
-                await saveSpotsOfflineSnapshot(lat, lng, filterTypes, rows, { coverageRadiusKm: radiusKm });
-              }
-            }
-          } else {
-            const cached = await loadSpotsOfflineSnapshot(lat, lng, filterTypes);
-            if (cached) {
-              rows = cached;
-            }
+        if (total === 0) {
+          if (gen === viewportGenRef.current) {
+            setClusters([]);
+            setViewportRowCount(0);
+            spotsRef.current = [];
           }
-        } catch (err) {
-          const cached = await loadSpotsOfflineSnapshot(lat, lng, filterTypes);
-          if (cached) {
-            rows = cached;
-          } else if (online) {
-            const message = err instanceof Error ? err.message : String(err);
-            if (fetchId === spotsFetchGenRef.current) {
-              Alert.alert(t('map.spotsLoadErrorTitle'), `${message}\n${t('offline.networkErrorNoCache')}`);
-            }
-          }
-        }
-
-        if (!online && rows.length === 0) {
-          if (fetchId === spotsFetchGenRef.current) {
-            Alert.alert(t('offline.noCacheTitle'), t('offline.noCacheMessage'));
-          }
-        }
-
-        if (fetchId !== spotsFetchGenRef.current) {
           return;
         }
 
-        setSpots(prepareMapSpotsFromRows(rows, targetRegion, MAP_VIEW_MAX_MARKERS));
+        const safeRegion = withMinimumDeltas(targetRegion);
+        const bounds = regionToBounds(safeRegion);
+        const z = Math.floor(zoomFromRegion(safeRegion));
+        const rows = await querySpotsInViewport(bounds, filterTypes, VIEWPORT_QUERY_HARD_CAP);
+        if (gen !== viewportGenRef.current) return;
+
+        setViewportRowCount(rows.length);
+        spotsRef.current = rows.map((r) =>
+          packToMarker(r.spotId, r.name, r.type, r.lat, r.lng, Boolean(r.isVerified)),
+        );
+
+        const index = buildClusterIndex(spotsToFeatures(rows));
+        clusterIndexRef.current = index;
+        const bbox: [number, number, number, number] = [bounds.west, bounds.south, bounds.east, bounds.north];
+        setClusters(index.getClusters(bbox, z) as Feature<Point>[]);
       } finally {
-        if (fetchId === spotsFetchGenRef.current) {
-          setLoadingSpots(false);
-        }
+        if (gen === viewportGenRef.current) setLoadingSpots(false);
       }
     },
-    [filterTypes, t],
+    [filterTypes],
   );
 
-  const downloadVisibleZoneForOffline = useCallback(async () => {
+  const requestAndLocate = useCallback(async () => {
+    setLoadingLocation(true);
+
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    setPermissionStatus(status);
+
+    if (status !== 'granted') {
+      setLoadingLocation(false);
+      Alert.alert(t('map.geoDisabledTitle'), t('map.geoDisabledMessage'));
+      return;
+    }
+
+    const current = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+
+    const nextRegion = withMinimumDeltas({
+      latitude: current.coords.latitude,
+      longitude: current.coords.longitude,
+      latitudeDelta: 0.08,
+      longitudeDelta: 0.08,
+    });
+
+    setUserLocation({
+      latitude: current.coords.latitude,
+      longitude: current.coords.longitude,
+    });
+    setRegion(nextRegion);
+    mapRef.current?.animateToRegion(nextRegion, 450);
+    setLoadingLocation(false);
+  }, [t]);
+
+  const onSyncFromServer = useCallback(async () => {
     const online = await getIsOnline();
     if (!online) {
       Alert.alert(t('offline.noCacheTitle'), t('map.downloadNeedNetwork'));
       return;
     }
-
-    const bounds = regionToBounds(region);
-    const radiusKm = clampDownloadRadiusKm(coverageRadiusKmForRegion(region));
-    const fk = !filterTypes || filterTypes.length === 0 ? 'all' : [...filterTypes].sort().join(',');
-    const id = `zone_${fk}_${radiusKm}_${[bounds.north, bounds.south, bounds.east, bounds.west].map((x) => Math.round(x * 10000)).join('_')}`;
-
-    setDownloadingZone(true);
+    setSyncing(true);
     try {
-      const rows = await fetchSpotsNearby({
-        latitude: region.latitude,
-        longitude: region.longitude,
-        radiusKm,
-        types: filterTypes,
-        limit: MAP_RPC_FETCH_LIMIT,
-      });
-      if (rows.length === 0) {
-        Alert.alert(t('common.error'), t('map.downloadZoneEmpty'));
-        return;
+      const nBefore = await countLocalSpots();
+      if (nBefore === 0) {
+        await runFullSpotSyncFromSupabase();
+      } else {
+        await runDeltaSpotSyncFromSupabase();
       }
-      await saveSpotsOfflineSnapshot(region.latitude, region.longitude, filterTypes, rows, {
-        bounds,
-        coverageRadiusKm: radiusKm,
-        id,
-      });
-      Alert.alert(
-        t('map.downloadZoneSuccessTitle'),
-        t('map.downloadZoneSuccessMessage', { count: rows.length, radius: radiusKm }),
-      );
-      await saveViewportCache(region, filterTypes, region.latitude, region.longitude, radiusKm, rows);
-      setSpots(prepareMapSpotsFromRows(rows, region, MAP_VIEW_MAX_MARKERS));
+      await refreshViewport(region);
+      const n = await countLocalSpots();
+      setLocalSpotCount(n);
+      if (n === 0) {
+        Alert.alert(t('common.error'), t('map.syncZeroRowsHint'));
+      } else {
+        Alert.alert(t('common.refresh'), t('map.syncDone'));
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      Alert.alert(t('map.downloadZoneErrorTitle'), message);
+      Alert.alert(t('common.error'), message);
     } finally {
-      setDownloadingZone(false);
+      setSyncing(false);
     }
-  }, [filterTypes, region, t]);
+  }, [refreshViewport, region, t]);
+
+  const onClusterPress = useCallback(
+    (feature: Feature<Point>) => {
+      const props = feature.properties as { cluster_id?: number };
+      const [lng, lat] = feature.geometry.coordinates;
+      const idx = clusterIndexRef.current;
+      if (!idx || props.cluster_id == null || !mapRef.current) return;
+      const z = idx.getClusterExpansionZoom(props.cluster_id);
+      const longitudeDelta = 360 / Math.pow(2, Math.min(22, Math.max(z, 1)));
+      const latitudeDelta = longitudeDelta;
+      mapRef.current.animateToRegion(
+        {
+          latitude: lat,
+          longitude: lng,
+          latitudeDelta,
+          longitudeDelta,
+        },
+        280,
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     requestAndLocate().catch(() => {
@@ -287,46 +302,83 @@ export default function MapScreen() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchNearbySpots(region).catch(() => {
-        setLoadingSpots(false);
-      });
-    }, 350);
-
+      refreshViewport(region).catch(() => setLoadingSpots(false));
+    }, 480);
     return () => clearTimeout(timer);
-  }, [fetchNearbySpots, region]);
+  }, [refreshViewport, region]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    return onSpotsLocalDbChanged(() => {
+      void refreshViewport(regionRef.current).catch(() => setLoadingSpots(false));
+    });
+  }, [refreshViewport]);
+
+  const displayedSpotCount = useMemo(() => {
+    return clusters.filter((c) => {
+      const p = c.properties as { cluster?: boolean };
+      return p.cluster !== true;
+    }).length;
+  }, [clusters]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <MapView
+        ref={mapRef}
         style={StyleSheet.absoluteFill}
-        initialRegion={region}
-        region={region}
-        onRegionChangeComplete={setRegion}
+        initialRegion={DEFAULT_REGION}
+        onRegionChangeComplete={onRegionChangeComplete}
         showsUserLocation={hasLocationAccess}
         showsMyLocationButton={hasLocationAccess}
-        radius={40}
-        clusterColor={colors.primary}
-        spiralEnabled
-        animationEnabled
       >
         {userLocation ? (
           <Marker coordinate={userLocation} title={t('map.youAreHere')} pinColor={colors.primary} />
         ) : null}
-        {spots.map((spot) => (
-          <MapSpotMarker
-            key={spot.id}
-            spotId={spot.id}
-            latitude={spot.latitude}
-            longitude={spot.longitude}
-            name={spot.name}
-            typeCode={spot.type}
-            isVerified={spot.isVerified}
-            spotType={normalizeSpotType(spot.type)}
-            pinBg={mapPinFill}
-            unverifiedColor={colors.unverified}
-            onOpen={handleOpenSpot}
-          />
-        ))}
+        {clusters.map((f, i) => {
+          const [lng, lat] = f.geometry.coordinates;
+          const props = f.properties as {
+            cluster?: boolean;
+            cluster_id?: number;
+            point_count?: number;
+            spotId?: string;
+            name?: string;
+            type?: string;
+            isVerified?: boolean;
+          };
+
+          if (props.cluster) {
+            const count = props.point_count ?? 0;
+            return (
+              <Marker
+                key={`c-${props.cluster_id ?? i}`}
+                coordinate={{ latitude: lat, longitude: lng }}
+                onPress={() => onClusterPress(f)}
+              >
+                <View style={[styles.clusterBubble, { backgroundColor: colors.primary, borderColor: colors.primaryDark }]}>
+                  <Text style={styles.clusterText}>{count}</Text>
+                </View>
+              </Marker>
+            );
+          }
+
+          if (!props.spotId || !props.name || !props.type) return null;
+
+          return (
+            <MapSpotMarker
+              key={props.spotId}
+              spotId={props.spotId}
+              latitude={lat}
+              longitude={lng}
+              name={props.name}
+              typeCode={props.type}
+              isVerified={Boolean(props.isVerified)}
+              spotType={normalizeSpotType(props.type)}
+              pinBg={mapPinFill}
+              unverifiedColor={colors.unverified}
+              onOpen={handleOpenSpot}
+            />
+          );
+        })}
       </MapView>
 
       <View style={styles.overlay} pointerEvents="box-none">
@@ -386,9 +438,19 @@ export default function MapScreen() {
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('map.subtitle')}</Text>
 
             <View style={styles.row}>
-              <Badge label={t('map.spotsInRadius', { count: spots.length })} variant="service" />
+              <Badge
+                label={t('map.spotsInRadius', { count: localSpotCount != null ? displayedSpotCount : 0 })}
+                variant="service"
+              />
               <Badge label={t('map.legendUnverified')} variant="warning" />
             </View>
+            {localSpotCount != null && localSpotCount > 0 ? (
+              <Text style={[styles.meta, { color: colors.textMuted }]}>
+                {t('map.localIndexHint', { total: localSpotCount, inView: viewportRowCount })}
+              </Text>
+            ) : (
+              <Text style={[styles.meta, { color: colors.textMuted }]}>{t('map.localIndexEmpty')}</Text>
+            )}
 
             {loadingSpots ? (
               <View style={styles.row}>
@@ -400,10 +462,10 @@ export default function MapScreen() {
             <TypeFilterBar value={filterTypes} onChange={setFilterTypes} />
 
             <Button
-              label={downloadingZone ? t('map.downloadZoneWorking') : t('map.downloadZone')}
+              label={syncing ? t('map.syncRunning') : t('map.syncFromServer')}
               variant="secondary"
-              onPress={() => downloadVisibleZoneForOffline()}
-              disabled={downloadingZone || loadingSpots}
+              onPress={onSyncFromServer}
+              disabled={syncing || loadingSpots}
               fullWidth
             />
           </Card>
@@ -480,6 +542,7 @@ const styles = StyleSheet.create({
   },
   title: { ...Typography.title },
   subtitle: { ...Typography.subtitle },
+  meta: { ...Typography.caption },
   filterLabel: {
     ...Typography.caption,
     textTransform: 'uppercase',
@@ -491,5 +554,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     flexWrap: 'wrap',
+  },
+  clusterBubble: {
+    minWidth: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  clusterText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 14,
   },
 });

@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { ActivityIndicator, Alert, Platform, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { TypeFilterBar } from '../../src/components/TypeFilterBar';
 import { Badge, Button, Card, ScreenContainer } from '../../src/components/ui';
+import { countLocalSpots } from '../../src/lib/localDb/client';
+import { querySpotsWithinRadiusKm } from '../../src/lib/localDb/spotQueries';
 import { getIsOnline } from '../../src/lib/networkStatus';
-import { parseSpotsFromNearbyRows } from '../../src/lib/parseSpotRows';
-import { loadSpotsOfflineSnapshot, saveSpotsOfflineSnapshot } from '../../src/lib/spotsOfflineCache';
+import { loadSpotsOfflineSnapshot } from '../../src/lib/spotsOfflineCache';
 import { fetchSpotsNearby, type NearbySpotRow } from '../../src/lib/spotsNearbyRpc';
+import { parseSpotsFromNearbyRows } from '../../src/lib/parseSpotRows';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
 
 type SpotRow = {
@@ -39,6 +42,9 @@ function haversineDistanceKm(
   return earthRadiusKm * c;
 }
 
+const LIST_RADIUS_KM = 50;
+const LIST_MAX = 200;
+
 export default function ListScreen() {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -62,50 +68,74 @@ export default function ListScreen() {
       latitude: current.coords.latitude,
       longitude: current.coords.longitude,
     };
-    let rows: NearbySpotRow[] = [];
-    const online = await getIsOnline();
 
     try {
-      if (online) {
-        rows = await fetchSpotsNearby({
-          latitude: center.latitude,
-          longitude: center.longitude,
-          radiusKm: 50,
-          types: filterTypes,
-        });
-        if (rows.length > 0) {
-          await saveSpotsOfflineSnapshot(center.latitude, center.longitude, filterTypes, rows);
+      if (Platform.OS !== 'web') {
+        const n = await countLocalSpots();
+        if (n > 0) {
+          const packs = await querySpotsWithinRadiusKm(
+            center.latitude,
+            center.longitude,
+            LIST_RADIUS_KM,
+            filterTypes,
+            LIST_MAX,
+          );
+          const parsed: SpotRow[] = packs.map((p) => ({
+            id: p.spotId,
+            name: p.name,
+            type: p.type,
+            latitude: p.lat,
+            longitude: p.lng,
+            isVerified: Boolean(p.isVerified),
+            distanceKm: haversineDistanceKm(center, { latitude: p.lat, longitude: p.lng }),
+          }));
+          setSpots(parsed);
+          setLoading(false);
+          return;
         }
-      } else {
+      }
+
+      let rows: NearbySpotRow[] = [];
+      const online = await getIsOnline();
+
+      try {
+        if (online) {
+          rows = await fetchSpotsNearby({
+            latitude: center.latitude,
+            longitude: center.longitude,
+            radiusKm: LIST_RADIUS_KM,
+            types: filterTypes,
+          });
+        } else {
+          const cached = await loadSpotsOfflineSnapshot(center.latitude, center.longitude, filterTypes);
+          if (cached) rows = cached;
+        }
+      } catch (err) {
         const cached = await loadSpotsOfflineSnapshot(center.latitude, center.longitude, filterTypes);
         if (cached) {
           rows = cached;
+        } else if (online) {
+          const message = err instanceof Error ? err.message : String(err);
+          Alert.alert(t('list.loadErrorTitle'), `${message}\n${t('offline.networkErrorNoCache')}`);
         }
       }
-    } catch (err) {
-      const cached = await loadSpotsOfflineSnapshot(center.latitude, center.longitude, filterTypes);
-      if (cached) {
-        rows = cached;
-      } else if (online) {
-        const message = err instanceof Error ? err.message : String(err);
-        Alert.alert(t('list.loadErrorTitle'), `${message}\n${t('offline.networkErrorNoCache')}`);
+
+      if (!online && rows.length === 0) {
+        Alert.alert(t('offline.noCacheTitle'), t('offline.noCacheMessage'));
       }
+
+      const base = parseSpotsFromNearbyRows(rows);
+      const parsed = base
+        .map((b) => ({
+          ...b,
+          distanceKm: haversineDistanceKm(center, { latitude: b.latitude, longitude: b.longitude }),
+        }))
+        .sort((a, b) => a.distanceKm - b.distanceKm);
+
+      setSpots(parsed);
+    } finally {
+      setLoading(false);
     }
-
-    if (!online && rows.length === 0) {
-      Alert.alert(t('offline.noCacheTitle'), t('offline.noCacheMessage'));
-    }
-
-    const base = parseSpotsFromNearbyRows(rows);
-    const parsed = base
-      .map((b) => ({
-        ...b,
-        distanceKm: haversineDistanceKm(center, { latitude: b.latitude, longitude: b.longitude }),
-      }))
-      .sort((a, b) => a.distanceKm - b.distanceKm);
-
-    setSpots(parsed);
-    setLoading(false);
   }, [filterTypes, t]);
 
   useEffect(() => {
@@ -153,7 +183,7 @@ export default function ListScreen() {
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('list.loadingSpots')}</Text>
         </View>
       ) : (
-        <FlatList
+        <FlashList
           data={spots}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}

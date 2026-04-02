@@ -1,5 +1,4 @@
 import { Tabs } from 'expo-router';
-import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../src/theme';
 import { TabBarIcon, type TabBarIconName } from '../../src/components/ui';
@@ -8,12 +7,11 @@ export default function TabsLayout() {
   const { colors } = useTheme();
   const { t } = useTranslation();
 
-  const renderTabIcon = useCallback(
-    ({ name, color, size }: { name: TabBarIconName; color: string; size: number }) => (
+  function tabIcon(name: TabBarIconName) {
+    return ({ color, size }: { color: string; size: number }) => (
       <TabBarIcon name={name} color={color} size={size} />
-    ),
-    [],
-  );
+    );
+  }
 
   return (
     <Tabs
@@ -31,21 +29,21 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: t('tabs.map'),
-          tabBarIcon: ({ color, size }) => renderTabIcon({ name: 'map', color, size }),
+          tabBarIcon: tabIcon('map'),
         }}
       />
       <Tabs.Screen
         name="list"
         options={{
           title: t('tabs.list'),
-          tabBarIcon: ({ color, size }) => renderTabIcon({ name: 'list', color, size }),
+          tabBarIcon: tabIcon('list'),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: t('tabs.profile'),
-          tabBarIcon: ({ color, size }) => renderTabIcon({ name: 'profile', color, size }),
+          tabBarIcon: tabIcon('profile'),
         }}
       />
     </Tabs>

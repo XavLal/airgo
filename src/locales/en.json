@@ -40,7 +40,13 @@
     "downloadZoneEmpty": "No spots were returned for this view at this zoom level.",
     "downloadZoneSuccessTitle": "Area saved",
     "downloadZoneSuccessMessage": "{{count}} spots saved for offline use (API radius ~ {{radius}} km).",
-    "downloadZoneErrorTitle": "Download failed"
+    "downloadZoneErrorTitle": "Download failed",
+    "syncFromServer": "Update from Supabase",
+    "syncRunning": "Syncing…",
+    "syncDone": "Local data updated.",
+    "syncZeroRowsHint": "Sync finished but no spots were saved. Check RLS policies on spots (anonymous read), latitude/longitude or readable geometry, and that the table has rows.",
+    "localIndexHint": "{{inView}} point(s) loaded for this view — {{total}} spots in local database.",
+    "localIndexEmpty": "No spots in local database: connect once for the initial import."
   },
   "filters": {
     "all": "All",
