@@ -25,7 +25,7 @@ export function regionToBounds(region: Region): MapBounds {
   };
 }
 
-function haversineKm(
+export function haversineKm(
   a: { latitude: number; longitude: number },
   b: { latitude: number; longitude: number },
 ): number {
@@ -58,6 +58,15 @@ export function coverageRadiusKmForRegion(region: Region): number {
     if (d > max) max = d;
   }
   return max * 1.08;
+}
+
+/** Point dans le rectangle géographique (hors chevauchement méridien / pôle). */
+export function pointInBounds(latitude: number, longitude: number, b: MapBounds): boolean {
+  if (latitude < b.south || latitude > b.north) return false;
+  if (b.west <= b.east) {
+    return longitude >= b.west && longitude <= b.east;
+  }
+  return longitude >= b.west || longitude <= b.east;
 }
 
 /** Limite côté client (la RPC doit accepter ce rayon ; ajuster si besoin côté Supabase). */

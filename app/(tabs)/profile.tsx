@@ -121,14 +121,42 @@ export default function ProfileScreen() {
 
     setLoadingSend(true);
     const cleanEmail = email.trim().toLowerCase();
-    const { error } = await supabase.auth.signInWithOtp({
-      email: cleanEmail,
-      options: { shouldCreateUser: true },
-    });
-    setLoadingSend(false);
+    let error: Error | null = null;
+
+    try {
+      const first = await supabase.auth.signInWithOtp({
+        email: cleanEmail,
+        options: { shouldCreateUser: true },
+      });
+      error = first.error;
+
+      // Sometimes user creation fails at DB level (ex: profiles trigger).
+      // Fallback: try again without forcing user creation; this can succeed if auth user already exists.
+      if (
+        error &&
+        error.message.toLowerCase().includes('database error saving user')
+      ) {
+        console.warn('OTP send failed with database-saving error; retrying without shouldCreateUser.', error);
+        const second = await supabase.auth.signInWithOtp({
+          email: cleanEmail,
+          options: { shouldCreateUser: false },
+        });
+        error = second.error;
+      }
+    } catch (e) {
+      error = e instanceof Error ? e : new Error(String(e));
+    } finally {
+      setLoadingSend(false);
+    }
 
     if (error) {
-      Alert.alert(t('profile.sendFailedTitle'), error.message);
+      console.error('OTP send error:', error);
+      const msg = error.message ?? String(error);
+      if (msg.toLowerCase().includes('database error saving user')) {
+        Alert.alert(t('profile.sendFailedTitle'), t('profile.sendFailedDatabaseHint'));
+        return;
+      }
+      Alert.alert(t('profile.sendFailedTitle'), msg);
       return;
     }
 

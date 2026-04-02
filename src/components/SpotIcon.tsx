@@ -16,6 +16,8 @@ interface SpotIconProps {
   size?: number;
   color?: string;
   variant?: SpotIconVariant;
+  /** Fond de l’épingle (variant `pin`) : plus clair que le défaut pour lisibilité sur carte */
+  pinBackgroundColor?: string;
 }
 
 export const SPOT_TYPE_LABELS: Record<SpotType, string> = {
@@ -364,6 +366,7 @@ export default function SpotIcon({
   size = 32,
   color,
   variant = 'icon',
+  pinBackgroundColor,
 }: SpotIconProps) {
   const palette = PALETTE[type] ?? PALETTE.OTHER;
   const s = color ?? palette.s;
@@ -372,11 +375,12 @@ export default function SpotIcon({
   const Icon = ICON_MAP[type] ?? ICON_MAP.OTHER;
 
   if (variant === 'pin') {
+    const pinBg = pinBackgroundColor ?? bg;
     // Pour la carte : hauteur = size * (58/48) pour conserver les proportions
     const pinHeight = Math.round(size * (58 / 48));
     return (
       <Svg width={size} height={pinHeight} viewBox={PIN_VIEWBOX}>
-        <PinBackground s={s} bg={bg} />
+        <PinBackground s={s} bg={pinBg} />
         <G transform={PIN_ICON_TRANSFORM}>
           <Icon s={s} f={f} />
         </G>

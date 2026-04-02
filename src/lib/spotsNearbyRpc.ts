@@ -7,6 +7,8 @@ export type FetchNearbyParams = {
   latitude: number;
   longitude: number;
   radiusKm?: number;
+  /** Si la RPC le supporte (ex. LIMIT SQL), réduit le volume renvoyé */
+  limit?: number;
   /** Sous-ensemble de types ; `null` / tous les codes = pas de filtre */
   types?: string[] | null;
 };
@@ -22,6 +24,7 @@ export async function fetchSpotsNearby({
   latitude,
   longitude,
   radiusKm = 50,
+  limit,
   types,
 }: FetchNearbyParams): Promise<NearbySpotRow[]> {
   const typeList = (types ?? []).filter(isSpotTypeCode);
@@ -38,29 +41,36 @@ export async function fetchSpotsNearby({
     ? [{ p_types: typeList }, { types: typeList }, { spot_types: typeList }, { p_type: typeList[0] }, {}]
     : [{}];
 
+  const limitAdds: Record<string, unknown>[] =
+    limit != null && Number.isFinite(limit) && limit > 0
+      ? [{ p_limit: limit }, { limit }, { max_results: limit }, { max_spots: limit }, {}]
+      : [{}];
+
   let lastError = '';
   for (const base of bases) {
     for (const add of filterAdds) {
-      const payload = { ...base, ...add };
-      const { data, error } = await supabase.rpc('spots_nearby', payload);
-      if (error) {
-        lastError = error.message;
-        continue;
-      }
-      let rows = (data as NearbySpotRow[]) ?? [];
-      if (hasFilter) {
-        const serverMayHaveFiltered = Object.keys(add).length > 0;
-        const rowType = (r: NearbySpotRow) => String(r.type ?? r.spot_type ?? '');
-        const inFilter = (r: NearbySpotRow) => {
-          const t = rowType(r);
-          return isSpotTypeCode(t) && typeList.includes(t);
-        };
-        const needsClient = !serverMayHaveFiltered || rows.some((r) => !inFilter(r));
-        if (needsClient) {
-          rows = rows.filter(inFilter);
+      for (const lim of limitAdds) {
+        const payload = { ...base, ...add, ...lim };
+        const { data, error } = await supabase.rpc('spots_nearby', payload);
+        if (error) {
+          lastError = error.message;
+          continue;
         }
+        let rows = (data as NearbySpotRow[]) ?? [];
+        if (hasFilter) {
+          const serverMayHaveFiltered = Object.keys(add).length > 0;
+          const rowType = (r: NearbySpotRow) => String(r.type ?? r.spot_type ?? '');
+          const inFilter = (r: NearbySpotRow) => {
+            const t = rowType(r);
+            return isSpotTypeCode(t) && typeList.includes(t);
+          };
+          const needsClient = !serverMayHaveFiltered || rows.some((r) => !inFilter(r));
+          if (needsClient) {
+            rows = rows.filter(inFilter);
+          }
+        }
+        return rows;
       }
-      return rows;
     }
   }
 

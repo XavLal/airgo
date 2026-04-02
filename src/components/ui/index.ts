@@ -4,3 +4,4 @@ export * from './Card';
 export * from './Input';
 export * from './ScreenContainer';
 export * from './Separator';
+export * from './TabBarIcon';

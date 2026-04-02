@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import MapView from 'react-native-map-clustering';
@@ -7,12 +7,16 @@ import { Marker, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { TypeFilterBar } from '../../src/components/TypeFilterBar';
 import { Badge, Button, Card } from '../../src/components/ui';
+import SpotIcon, { type SpotType } from '../../src/components/SpotIcon';
+import { SPOT_TYPE_CODES } from '../../src/constants/spotTypes';
 import { clampDownloadRadiusKm, coverageRadiusKmForRegion, regionToBounds } from '../../src/lib/mapRegionBounds';
 import { getIsOnline } from '../../src/lib/networkStatus';
-import { parseSpotsFromNearbyRows } from '../../src/lib/parseSpotRows';
+import { MAP_VIEW_MAX_MARKERS, prepareMapSpotsFromRows } from '../../src/lib/mapSpotsViewport';
+import { loadViewportCacheRows, saveViewportCache } from '../../src/lib/mapViewportCache';
+import type { ParsedSpotBase } from '../../src/lib/parseSpotRows';
 import { loadSpotsOfflineSnapshot, saveSpotsOfflineSnapshot } from '../../src/lib/spotsOfflineCache';
 import { fetchSpotsNearby, type NearbySpotRow } from '../../src/lib/spotsNearbyRpc';
-import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
+import { DarkColors, Radius, Spacing, Typography, useTheme } from '../../src/theme';
 
 const DEFAULT_REGION: Region = {
   latitude: 46.2276,
@@ -21,14 +25,64 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 7.5,
 };
 
-type SpotMarker = {
-  id: string;
-  name: string;
-  type: string;
+/** Marqueurs carte : filtrés au viewport, triés par distance (voir mapSpotsViewport). */
+type SpotMarker = ParsedSpotBase;
+
+const MAP_RPC_FETCH_LIMIT = 400;
+
+const MapSpotMarker = React.memo(function MapSpotMarker({
+  spotId,
+  latitude,
+  longitude,
+  name,
+  typeCode,
+  isVerified,
+  spotType,
+  pinBg,
+  unverifiedColor,
+  onOpen,
+}: {
+  spotId: string;
   latitude: number;
   longitude: number;
+  name: string;
+  typeCode: string;
   isVerified: boolean;
-};
+  spotType: SpotType;
+  pinBg: string;
+  unverifiedColor: string;
+  onOpen: (id: string) => void;
+}) {
+  const handlePress = useCallback(() => onOpen(spotId), [onOpen, spotId]);
+
+  return (
+    <Marker
+      coordinate={{ latitude, longitude }}
+      title={name}
+      description={typeCode}
+      tracksViewChanges={false}
+      onPress={handlePress}
+    >
+      <View
+        style={[
+          mapMarkerStyles.wrap,
+          !isVerified
+            ? { borderWidth: 2, borderColor: unverifiedColor, borderRadius: 999, padding: 2 }
+            : null,
+        ]}
+      >
+        <SpotIcon type={spotType} variant="pin" size={34} pinBackgroundColor={pinBg} />
+      </View>
+    </Marker>
+  );
+});
+
+const mapMarkerStyles = StyleSheet.create({
+  wrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 export default function MapScreen() {
   const { t } = useTranslation();
@@ -41,15 +95,24 @@ export default function MapScreen() {
   const [spots, setSpots] = useState<SpotMarker[]>([]);
   const [loadingSpots, setLoadingSpots] = useState(false);
   const [filterTypes, setFilterTypes] = useState<string[] | null>(null);
-  const [fromOfflineCache, setFromOfflineCache] = useState(false);
   const [downloadingZone, setDownloadingZone] = useState(false);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const spotsFetchGenRef = useRef(0);
+  const spotsRef = useRef<SpotMarker[]>([]);
+  spotsRef.current = spots;
 
   const hasLocationAccess = permissionStatus === 'granted';
-  const permissionLabel = useMemo(() => {
-    if (permissionStatus === null) return t('map.permissionPending');
-    if (permissionStatus === 'granted') return t('map.permissionGranted');
-    return t('map.permissionDenied');
-  }, [permissionStatus, t]);
+
+  /** Fond d’épingle clair pour contraster avec la carte (surface blanche en thème clair, quasi-blanc en sombre). */
+  const mapPinFill = useMemo(
+    () => (colors.background === DarkColors.background ? '#F0F7F2' : colors.surface),
+    [colors.background, colors.surface],
+  );
+
+  const normalizeSpotType = useCallback((type: string): SpotType => {
+    const hasKnownCode = (SPOT_TYPE_CODES as readonly string[]).includes(type);
+    return (hasKnownCode ? type : 'OTHER') as SpotType;
+  }, []);
 
   const requestAndLocate = useCallback(async () => {
     setLoadingLocation(true);
@@ -82,52 +145,91 @@ export default function MapScreen() {
     setLoadingLocation(false);
   }, [t]);
 
+  const handleOpenSpot = useCallback(
+    (id: string) => {
+      const spot = spotsRef.current.find((s) => s.id === id);
+      if (!spot) return;
+      router.push({
+        pathname: '/spot/[id]',
+        params: {
+          id: spot.id,
+          name: spot.name,
+          type: spot.type,
+          lat: String(spot.latitude),
+          lng: String(spot.longitude),
+          verified: spot.isVerified ? '1' : '0',
+        },
+      });
+    },
+    [router],
+  );
+
   const fetchNearbySpots = useCallback(
     async (targetRegion: Region) => {
+      const fetchId = ++spotsFetchGenRef.current;
       setLoadingSpots(true);
-      setFromOfflineCache(false);
-
-      const lat = targetRegion.latitude;
-      const lng = targetRegion.longitude;
-      let rows: NearbySpotRow[] = [];
-
-      const online = await getIsOnline();
 
       try {
-        if (online) {
-          rows = await fetchSpotsNearby({
-            latitude: lat,
-            longitude: lng,
-            radiusKm: 50,
-            types: filterTypes,
-          });
-          if (rows.length > 0) {
-            await saveSpotsOfflineSnapshot(lat, lng, filterTypes, rows, { coverageRadiusKm: 50 });
+        const lat = targetRegion.latitude;
+        const lng = targetRegion.longitude;
+        let rows: NearbySpotRow[] = [];
+
+        const online = await getIsOnline();
+
+        const radiusKm = clampDownloadRadiusKm(coverageRadiusKmForRegion(targetRegion));
+
+        try {
+          if (online) {
+            const viewportCached = await loadViewportCacheRows(targetRegion, filterTypes);
+            if (viewportCached != null) {
+              rows = viewportCached;
+            } else {
+              rows = await fetchSpotsNearby({
+                latitude: lat,
+                longitude: lng,
+                radiusKm,
+                types: filterTypes,
+                limit: MAP_RPC_FETCH_LIMIT,
+              });
+              await saveViewportCache(targetRegion, filterTypes, lat, lng, radiusKm, rows);
+              if (rows.length > 0) {
+                await saveSpotsOfflineSnapshot(lat, lng, filterTypes, rows, { coverageRadiusKm: radiusKm });
+              }
+            }
+          } else {
+            const cached = await loadSpotsOfflineSnapshot(lat, lng, filterTypes);
+            if (cached) {
+              rows = cached;
+            }
           }
-        } else {
+        } catch (err) {
           const cached = await loadSpotsOfflineSnapshot(lat, lng, filterTypes);
           if (cached) {
             rows = cached;
-            setFromOfflineCache(true);
+          } else if (online) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (fetchId === spotsFetchGenRef.current) {
+              Alert.alert(t('map.spotsLoadErrorTitle'), `${message}\n${t('offline.networkErrorNoCache')}`);
+            }
           }
         }
-      } catch (err) {
-        const cached = await loadSpotsOfflineSnapshot(lat, lng, filterTypes);
-        if (cached) {
-          rows = cached;
-          setFromOfflineCache(true);
-        } else if (online) {
-          const message = err instanceof Error ? err.message : String(err);
-          Alert.alert(t('map.spotsLoadErrorTitle'), `${message}\n${t('offline.networkErrorNoCache')}`);
+
+        if (!online && rows.length === 0) {
+          if (fetchId === spotsFetchGenRef.current) {
+            Alert.alert(t('offline.noCacheTitle'), t('offline.noCacheMessage'));
+          }
+        }
+
+        if (fetchId !== spotsFetchGenRef.current) {
+          return;
+        }
+
+        setSpots(prepareMapSpotsFromRows(rows, targetRegion, MAP_VIEW_MAX_MARKERS));
+      } finally {
+        if (fetchId === spotsFetchGenRef.current) {
+          setLoadingSpots(false);
         }
       }
-
-      if (!online && rows.length === 0) {
-        Alert.alert(t('offline.noCacheTitle'), t('offline.noCacheMessage'));
-      }
-
-      setSpots(parseSpotsFromNearbyRows(rows));
-      setLoadingSpots(false);
     },
     [filterTypes, t],
   );
@@ -151,6 +253,7 @@ export default function MapScreen() {
         longitude: region.longitude,
         radiusKm,
         types: filterTypes,
+        limit: MAP_RPC_FETCH_LIMIT,
       });
       if (rows.length === 0) {
         Alert.alert(t('common.error'), t('map.downloadZoneEmpty'));
@@ -165,8 +268,8 @@ export default function MapScreen() {
         t('map.downloadZoneSuccessTitle'),
         t('map.downloadZoneSuccessMessage', { count: rows.length, radius: radiusKm }),
       );
-      setFromOfflineCache(false);
-      setSpots(parseSpotsFromNearbyRows(rows));
+      await saveViewportCache(region, filterTypes, region.latitude, region.longitude, radiusKm, rows);
+      setSpots(prepareMapSpotsFromRows(rows, region, MAP_VIEW_MAX_MARKERS));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       Alert.alert(t('map.downloadZoneErrorTitle'), message);
@@ -210,62 +313,101 @@ export default function MapScreen() {
           <Marker coordinate={userLocation} title={t('map.youAreHere')} pinColor={colors.primary} />
         ) : null}
         {spots.map((spot) => (
-          <Marker
+          <MapSpotMarker
             key={spot.id}
-            coordinate={{ latitude: spot.latitude, longitude: spot.longitude }}
-            title={spot.name}
-            description={spot.type}
-            pinColor={spot.isVerified ? colors.service : colors.unverified}
-            onCalloutPress={() =>
-              router.push({
-                pathname: '/spot/[id]',
-                params: {
-                  id: spot.id,
-                  name: spot.name,
-                  type: spot.type,
-                  lat: String(spot.latitude),
-                  lng: String(spot.longitude),
-                  verified: spot.isVerified ? '1' : '0',
-                },
-              })
-            }
+            spotId={spot.id}
+            latitude={spot.latitude}
+            longitude={spot.longitude}
+            name={spot.name}
+            typeCode={spot.type}
+            isVerified={spot.isVerified}
+            spotType={normalizeSpotType(spot.type)}
+            pinBg={mapPinFill}
+            unverifiedColor={colors.unverified}
+            onOpen={handleOpenSpot}
           />
         ))}
       </MapView>
 
-      <View style={styles.overlay}>
-        <Card style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]} elevated>
-          <Text style={[styles.title, { color: colors.primary }]}>{t('map.title')}</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('map.subtitle')}</Text>
+      <View style={styles.overlay} pointerEvents="box-none">
+        <View style={styles.controlsRow} pointerEvents="auto">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('map.title')}
+            onPress={() => setIsInfoOpen((v) => !v)}
+            style={[styles.roundButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
+            {loadingSpots ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <View style={styles.burger}>
+                <View style={[styles.burgerLine, { backgroundColor: colors.textPrimary }]} />
+                <View style={[styles.burgerLine, { backgroundColor: colors.textPrimary }]} />
+                <View style={[styles.burgerLine, { backgroundColor: colors.textPrimary }]} />
+              </View>
+            )}
+          </Pressable>
 
-          <View style={styles.row}>
-            <Badge label={permissionLabel} variant={hasLocationAccess ? 'success' : 'warning'} />
-            {loadingLocation ? <ActivityIndicator color={colors.primary} /> : null}
-            {loadingSpots ? <ActivityIndicator color={colors.service} /> : null}
-          </View>
-          <Badge label={t('map.spotsInRadius', { count: spots.length })} variant="service" />
-          {fromOfflineCache ? <Badge label={t('offline.badge')} variant="farm" /> : null}
-          <Badge label={t('map.legendUnverified')} variant="warning" />
+          {isInfoOpen ? (
+            <View style={styles.headerRightRow}>
+              <Button
+                label={loadingLocation ? t('map.locating') : t('map.recenter')}
+                onPress={requestAndLocate}
+                disabled={loadingLocation}
+                variant="secondary"
+                size="md"
+                style={styles.recenterHeaderButton}
+              />
+              <Button
+                label="+"
+                size="md"
+                variant="secondary"
+                onPress={() => router.push('/add-spot')}
+                accessibilityLabel={t('map.addSpot')}
+                style={styles.headerAddButton}
+              />
+            </View>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('map.recenter')}
+              onPress={requestAndLocate}
+              disabled={loadingLocation}
+              style={[styles.recenterButtonRound, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <Text style={[styles.recenterButtonText, { color: colors.textPrimary }]}>{'⌖'}</Text>
+            </Pressable>
+          )}
+        </View>
 
-          <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('map.filtersTitle')}</Text>
-          <TypeFilterBar value={filterTypes} onChange={setFilterTypes} />
+        {isInfoOpen ? (
+          <Card elevated style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.title, { color: colors.primary }]}>{t('map.title')}</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('map.subtitle')}</Text>
 
-          <Button
-            label={downloadingZone ? t('map.downloadZoneWorking') : t('map.downloadZone')}
-            variant="secondary"
-            onPress={() => downloadVisibleZoneForOffline()}
-            disabled={downloadingZone || loadingSpots}
-            fullWidth
-          />
+            <View style={styles.row}>
+              <Badge label={t('map.spotsInRadius', { count: spots.length })} variant="service" />
+              <Badge label={t('map.legendUnverified')} variant="warning" />
+            </View>
 
-          <Button
-            label={loadingLocation ? t('map.locating') : t('map.recenter')}
-            onPress={requestAndLocate}
-            disabled={loadingLocation}
-            fullWidth
-          />
-          <Button label={t('map.addSpot')} variant="secondary" onPress={() => router.push('/add-spot')} fullWidth />
-        </Card>
+            {loadingSpots ? (
+              <View style={styles.row}>
+                <ActivityIndicator color={colors.service} />
+              </View>
+            ) : null}
+
+            <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('map.filtersTitle')}</Text>
+            <TypeFilterBar value={filterTypes} onChange={setFilterTypes} />
+
+            <Button
+              label={downloadingZone ? t('map.downloadZoneWorking') : t('map.downloadZone')}
+              variant="secondary"
+              onPress={() => downloadVisibleZoneForOffline()}
+              disabled={downloadingZone || loadingSpots}
+              fullWidth
+            />
+          </Card>
+        ) : null}
       </View>
     </View>
   );
@@ -275,14 +417,66 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   overlay: {
     position: 'absolute',
-    top: Spacing.xxl + Spacing.sm,
+    top: Spacing.xxl + Spacing.md,
     left: Spacing.lg,
     right: Spacing.lg,
-    maxHeight: '55%',
+    zIndex: 10,
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  roundButton: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  burger: {
+    width: 20,
+    gap: 4,
+  },
+  burgerLine: {
+    height: 2.2,
+    borderRadius: 2,
+    width: '100%',
+  },
+  recenterButtonRound: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recenterButtonText: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  headerRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  headerAddButton: {
+    width: 44,
+    paddingHorizontal: 0,
+    borderRadius: Radius.pill,
+    height: 44,
+  },
+  recenterHeaderButton: {
+    height: 44,
+    alignSelf: 'center',
   },
   panel: {
     gap: Spacing.sm,
     borderRadius: Radius.lg,
+    width: '100%',
+    marginTop: Spacing.sm,
   },
   title: { ...Typography.title },
   subtitle: { ...Typography.subtitle },

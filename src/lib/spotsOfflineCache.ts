@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { MapBounds } from './mapRegionBounds';
+import { pointInBounds, type MapBounds } from './mapRegionBounds';
 import type { NearbySpotRow } from './spotsNearbyRpc';
 
 const STORAGE_KEY = 'airgo.spots.offline.v1';
@@ -57,14 +57,6 @@ function haversineKm(
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-}
-
-function pointInBounds(lat: number, lng: number, b: MapBounds): boolean {
-  if (lat < b.south || lat > b.north) return false;
-  if (b.west <= b.east) {
-    return lng >= b.west && lng <= b.east;
-  }
-  return lng >= b.west || lng <= b.east;
 }
 
 /** Le point (requête carte / liste) est couvert par ce snapshot ? */

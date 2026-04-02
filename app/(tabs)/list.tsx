@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
@@ -43,25 +43,14 @@ export default function ListScreen() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const router = useRouter();
-  const [permissionStatus, setPermissionStatus] = useState<Location.PermissionStatus | null>(null);
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [spots, setSpots] = useState<SpotRow[]>([]);
   const [filterTypes, setFilterTypes] = useState<string[] | null>(null);
-  const [fromOfflineCache, setFromOfflineCache] = useState(false);
-
-  const permissionLabel = useMemo(() => {
-    if (permissionStatus === null) return t('map.permissionPending');
-    if (permissionStatus === 'granted') return t('map.permissionGranted');
-    return t('map.permissionDenied');
-  }, [permissionStatus, t]);
 
   const loadNearbyList = useCallback(async () => {
     setLoading(true);
-    setFromOfflineCache(false);
 
     const { status } = await Location.requestForegroundPermissionsAsync();
-    setPermissionStatus(status);
     if (status !== 'granted') {
       setLoading(false);
       Alert.alert(t('list.permissionNeededTitle'), t('list.permissionNeededMessage'));
@@ -73,8 +62,6 @@ export default function ListScreen() {
       latitude: current.coords.latitude,
       longitude: current.coords.longitude,
     };
-    setUserLocation(center);
-
     let rows: NearbySpotRow[] = [];
     const online = await getIsOnline();
 
@@ -93,14 +80,12 @@ export default function ListScreen() {
         const cached = await loadSpotsOfflineSnapshot(center.latitude, center.longitude, filterTypes);
         if (cached) {
           rows = cached;
-          setFromOfflineCache(true);
         }
       }
     } catch (err) {
       const cached = await loadSpotsOfflineSnapshot(center.latitude, center.longitude, filterTypes);
       if (cached) {
         rows = cached;
-        setFromOfflineCache(true);
       } else if (online) {
         const message = err instanceof Error ? err.message : String(err);
         Alert.alert(t('list.loadErrorTitle'), `${message}\n${t('offline.networkErrorNoCache')}`);
@@ -136,24 +121,30 @@ export default function ListScreen() {
         <Text style={[styles.title, { color: colors.primary }]}>{t('list.title')}</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('list.subtitle')}</Text>
         <View style={styles.row}>
-          <Badge label={permissionLabel} variant={permissionStatus === 'granted' ? 'success' : 'warning'} />
-          {fromOfflineCache ? <Badge label={t('offline.badge')} variant="farm" /> : null}
           <Badge label={t('list.results', { count: spots.length })} variant="service" />
-          {userLocation ? (
-            <Badge label={`${userLocation.latitude.toFixed(3)}, ${userLocation.longitude.toFixed(3)}`} variant="default" />
-          ) : null}
+          <Badge label={t('map.legendUnverified')} variant="warning" />
         </View>
 
         <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('map.filtersTitle')}</Text>
         <TypeFilterBar value={filterTypes} onChange={setFilterTypes} />
 
-        <Button
-          label={loading ? t('list.refreshing') : t('list.refresh')}
-          onPress={loadNearbyList}
-          disabled={loading}
-          fullWidth
-        />
-        <Button label={t('list.addSpot')} variant="secondary" onPress={() => router.push('/add-spot')} fullWidth />
+        <View style={styles.actionRow}>
+          <Button
+            label={loading ? t('list.refreshing') : t('list.refresh')}
+            onPress={loadNearbyList}
+            disabled={loading}
+            style={styles.refreshButton}
+          />
+          <Button
+            label="+"
+            size="md"
+            variant="secondary"
+            onPress={() => router.push('/add-spot')}
+            disabled={loading}
+            accessibilityLabel={t('list.addSpot')}
+            style={styles.iconAddButton}
+          />
+        </View>
       </View>
 
       {loading ? (
@@ -220,6 +211,18 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    alignItems: 'center',
+  },
+  refreshButton: {
+    flex: 1,
+  },
+  iconAddButton: {
+    width: 48,
+    paddingHorizontal: 0,
   },
   row: {
     flexDirection: 'row',
