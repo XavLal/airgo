@@ -2,24 +2,40 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import { Platform } from 'react-native';
 import { SPOT_DELTA_SYNC_TASK } from '../../tasks/spotSyncTask';
 import { getIsOnline } from '../networkStatus';
-import { countLocalSpots, getSpotsDatabase } from './client';
-import { runDeltaSpotSyncFromSupabase, runFullSpotSyncFromSupabase } from './spotSync';
+import { countLocalSpots, getSpotsDatabase, getSyncMeta } from './client';
+import {
+  META_ASC_BOOTSTRAP_PENDING,
+  runDeltaSpotSyncFromSupabase,
+  runFullSpotSyncFromSupabase,
+  runInitialSeedFromBundledAsc,
+} from './spotSync';
 
 export async function bootstrapLocalSpotsData(): Promise<void> {
   if (Platform.OS === 'web') return;
 
   await getSpotsDatabase();
 
-  const online = await getIsOnline();
-  const n = await countLocalSpots();
+  let n = await countLocalSpots();
 
-  if (n === 0 && online) {
-    try {
-      await runFullSpotSyncFromSupabase();
-    } catch (e) {
-      console.warn('Synchro initiale des aires impossible', e);
+  if (n === 0) {
+    const seeded = await runInitialSeedFromBundledAsc();
+    if (!seeded) {
+      const online = await getIsOnline();
+      if (online) {
+        try {
+          await runFullSpotSyncFromSupabase();
+        } catch (e) {
+          console.warn('Synchro initiale des aires impossible', e);
+        }
+      }
     }
-  } else if (online && n > 0) {
+  }
+
+  n = await countLocalSpots();
+  const online = await getIsOnline();
+  const ascPending = (await getSyncMeta(META_ASC_BOOTSTRAP_PENDING)) === '1';
+
+  if (online && n > 0 && !ascPending) {
     void runDeltaSpotSyncFromSupabase().catch((e) => console.warn('Delta sync (premier plan)', e));
   }
 

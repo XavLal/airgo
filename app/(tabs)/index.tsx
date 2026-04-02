@@ -11,7 +11,11 @@ import { SPOT_TYPE_CODES } from '../../src/constants/spotTypes';
 import { countLocalSpots } from '../../src/lib/localDb/client';
 import { querySpotsInViewport, VIEWPORT_QUERY_HARD_CAP } from '../../src/lib/localDb/spotQueries';
 import { onSpotsLocalDbChanged } from '../../src/lib/localDb/spotSyncEvents';
-import { runDeltaSpotSyncFromSupabase, runFullSpotSyncFromSupabase } from '../../src/lib/localDb/spotSync';
+import {
+  isAscBootstrapPending,
+  runDeltaSpotSyncFromSupabase,
+  runFullSpotSyncFromSupabase,
+} from '../../src/lib/localDb/spotSync';
 import { buildClusterIndex, spotsToFeatures, zoomFromRegion } from '../../src/lib/mapClusterHelpers';
 import type { Feature, Point } from 'geojson';
 import { regionToBounds } from '../../src/lib/mapRegionBounds';
@@ -250,7 +254,10 @@ export default function MapScreen() {
     setSyncing(true);
     try {
       const nBefore = await countLocalSpots();
-      if (nBefore === 0) {
+      const ascPending = await isAscBootstrapPending();
+      if (ascPending) {
+        await runFullSpotSyncFromSupabase();
+      } else if (nBefore === 0) {
         await runFullSpotSyncFromSupabase();
       } else {
         await runDeltaSpotSyncFromSupabase();

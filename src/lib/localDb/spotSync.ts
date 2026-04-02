@@ -1,9 +1,15 @@
 import type * as SQLite from 'expo-sqlite';
+import { Asset } from 'expo-asset';
 import { Platform } from 'react-native';
 import { parsePostgisEwkbPoint2dHex } from '../parsePostgisEwkbHex';
 import { supabase } from '../supabase';
+import { parseAscSpotLine } from './ascSpotLine';
 import { getSpotsDatabase, getSyncMeta, isRtreeEnabled, setSyncMeta } from './client';
 import { emitSpotsLocalDbChanged } from './spotSyncEvents';
+import type { PackInsert } from './spotSyncTypes';
+
+/** Après un remplissage initial depuis le fichier .asc, la 1re synchro réseau doit être un import complet (UUID Supabase ≠ cci:). */
+export const META_ASC_BOOTSTRAP_PENDING = 'asc_bootstrap_pending';
 
 /** Plus de lignes par page = moins d’aller-retour réseau ; écriture SQLite découpée (voir SQLITE_TX_CHUNK). */
 const PAGE_SIZE = 1000;
@@ -77,20 +83,6 @@ export function extractLatLng(row: Record<string, unknown>): { lat: number; lng:
   }
   return null;
 }
-
-type PackInsert = {
-  spotId: string;
-  name: string;
-  type: string;
-  lat: number;
-  lng: number;
-  isVerified: number;
-  city: string | null;
-  postalCode: string | null;
-  description: string | null;
-  createdBy: string | null;
-  updatedAt: string;
-};
 
 function rowToPack(row: Record<string, unknown>): PackInsert | null {
   const coords = extractLatLng(row);
@@ -238,7 +230,62 @@ export async function runFullSpotSyncFromSupabase(): Promise<void> {
 
   await setSyncMeta(META_FULL_SYNC, '1');
   await setSyncMeta(META_LAST_DELTA, new Date().toISOString());
+  await setSyncMeta(META_ASC_BOOTSTRAP_PENDING, '0');
   emitSpotsLocalDbChanged();
+}
+
+async function loadBundledAscText(): Promise<string> {
+  const assetIdRaw: unknown = require('../../../assets/data/ATOTALES_CCI.asc');
+  const assetId = assetIdRaw as number;
+  const asset = Asset.fromModule(assetId);
+  await asset.downloadAsync();
+  const uri = asset.localUri;
+  if (uri == null || uri === '') throw new Error('Asset .asc introuvable après téléchargement local.');
+  const res = await fetch(uri);
+  if (!res.ok) throw new Error(`Lecture .asc impossible (${res.status})`);
+  return await res.text();
+}
+
+/**
+ * Premier remplissage SQLite depuis le bundle (rapide, hors réseau).
+ * @returns true si au moins une aire a été insérée
+ */
+export async function runInitialSeedFromBundledAsc(): Promise<boolean> {
+  let text: string;
+  try {
+    text = await loadBundledAscText();
+  } catch (e) {
+    console.warn('Chargement ATOTALES_CCI.asc (bundle) impossible', e);
+    return false;
+  }
+
+  const lines = text.split(/\n/);
+  const packs: PackInsert[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const pack = parseAscSpotLine(lines[i] ?? '', i);
+    if (pack) packs.push(pack);
+  }
+
+  if (packs.length === 0) return false;
+
+  const db = await getSpotsDatabase();
+  const rtree = await isRtreeEnabled();
+  for (let i = 0; i < packs.length; i += SQLITE_TX_CHUNK) {
+    const chunk = packs.slice(i, i + SQLITE_TX_CHUNK);
+    await runExclusiveWrite(db, async (w) => {
+      for (const pack of chunk) {
+        await upsertPackRowInner(w, rtree, pack);
+      }
+    });
+  }
+
+  await setSyncMeta(META_ASC_BOOTSTRAP_PENDING, '1');
+  emitSpotsLocalDbChanged();
+  return true;
+}
+
+export async function isAscBootstrapPending(): Promise<boolean> {
+  return (await getSyncMeta(META_ASC_BOOTSTRAP_PENDING)) === '1';
 }
 
 /**
@@ -246,6 +293,11 @@ export async function runFullSpotSyncFromSupabase(): Promise<void> {
  * Les soft deletes sont propagés par suppression locale (`deleted_at` / `is_deleted`).
  */
 export async function runDeltaSpotSyncFromSupabase(): Promise<void> {
+  if ((await getSyncMeta(META_ASC_BOOTSTRAP_PENDING)) === '1') {
+    await runFullSpotSyncFromSupabase();
+    return;
+  }
+
   const last = await getSyncMeta(META_LAST_DELTA);
   const since = last ?? '1970-01-01T00:00:00.000Z';
 
