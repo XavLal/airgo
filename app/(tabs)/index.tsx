@@ -54,6 +54,47 @@ function packToMarker(spotId: string, name: string, type: string, lat: number, l
   };
 }
 
+const TRACK_VIEWS_DELAY_MS = 350;
+
+function useDelayedTrack(): boolean {
+  const [tracked, setTracked] = useState(Platform.OS === 'android');
+  useEffect(() => {
+    if (!tracked) return;
+    const t = setTimeout(() => setTracked(false), TRACK_VIEWS_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [tracked]);
+  return tracked;
+}
+
+const MapClusterMarker = React.memo(function MapClusterMarker({
+  clusterId,
+  latitude,
+  longitude,
+  count,
+  bubbleStyle,
+  onPress,
+}: {
+  clusterId: number;
+  latitude: number;
+  longitude: number;
+  count: number;
+  bubbleStyle: { backgroundColor: string; borderColor: string };
+  onPress: () => void;
+}) {
+  const tracked = useDelayedTrack();
+  return (
+    <Marker
+      coordinate={{ latitude, longitude }}
+      tracksViewChanges={tracked}
+      onPress={onPress}
+    >
+      <View style={[styles.clusterBubble, bubbleStyle]}>
+        <Text style={styles.clusterText}>{count}</Text>
+      </View>
+    </Marker>
+  );
+});
+
 const MapSpotMarker = React.memo(function MapSpotMarker({
   spotId,
   latitude,
@@ -77,6 +118,7 @@ const MapSpotMarker = React.memo(function MapSpotMarker({
   unverifiedColor: string;
   onOpen: (id: string) => void;
 }) {
+  const tracked = useDelayedTrack();
   const handlePress = useCallback(() => onOpen(spotId), [onOpen, spotId]);
 
   return (
@@ -84,7 +126,7 @@ const MapSpotMarker = React.memo(function MapSpotMarker({
       coordinate={{ latitude, longitude }}
       title={name}
       description={typeCode}
-      tracksViewChanges={false}
+      tracksViewChanges={tracked}
       onPress={handlePress}
     >
       <View
@@ -141,6 +183,11 @@ export default function MapScreen() {
   const mapPinFill = useMemo(
     () => (colors.background === DarkColors.background ? '#F0F7F2' : colors.surface),
     [colors.background, colors.surface],
+  );
+
+  const clusterBubbleColors = useMemo(
+    () => ({ backgroundColor: colors.primary, borderColor: colors.primaryDark }),
+    [colors.primary, colors.primaryDark],
   );
 
   const normalizeSpotType = useCallback((type: string): SpotType => {
@@ -354,17 +401,16 @@ export default function MapScreen() {
           };
 
           if (props.cluster) {
-            const count = props.point_count ?? 0;
             return (
-              <Marker
+              <MapClusterMarker
                 key={`c-${props.cluster_id ?? i}`}
-                coordinate={{ latitude: lat, longitude: lng }}
+                clusterId={props.cluster_id ?? i}
+                latitude={lat}
+                longitude={lng}
+                count={props.point_count ?? 0}
+                bubbleStyle={clusterBubbleColors}
                 onPress={() => onClusterPress(f)}
-              >
-                <View style={[styles.clusterBubble, { backgroundColor: colors.primary, borderColor: colors.primaryDark }]}>
-                  <Text style={styles.clusterText}>{count}</Text>
-                </View>
-              </Marker>
+              />
             );
           }
 
