@@ -1,0 +1,44 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fond blanc pour export -->
+  <rect width="1024" height="1024" fill="#FFFFFF"/>
+
+  <!-- Badge circulaire -->
+  <circle cx="512" cy="512" r="480" fill="#1A2E4A"/>
+  <circle cx="512" cy="512" r="460" fill="none" stroke="#2E86C1" stroke-width="6"/>
+
+  <!-- Montagnes -->
+  <polygon points="192,730 400,435 608,730" fill="#2E4A6A"/>
+  <polygon points="408,730,595,460 800,730" fill="#3A6186"/>
+  <polygon points="268,730 408,520 548,730" fill="#263D5A"/>
+
+  <!-- Sol -->
+  <rect x="150" y="715" width="724" height="18" rx="5" fill="#0D1E30"/>
+  <line x1="182" y1="724" x2="858" y2="724" fill="none" stroke="#5D8AAD" stroke-width="4" stroke-dasharray="16,13"/>
+
+  <!-- Étoiles -->
+  <circle cx="268" cy="290" r="6" fill="#F0B429"/>
+  <circle cx="752" cy="282" r="6" fill="#F0B429"/>
+  <circle cx="336" cy="228" r="4" fill="#AED6F1" opacity="0.7"/>
+  <circle cx="688" cy="240" r="4" fill="#AED6F1" opacity="0.7"/>
+  <circle cx="434" cy="198" r="3" fill="#F0B429" opacity="0.6"/>
+  <circle cx="616" cy="210" r="3" fill="#F0B429" opacity="0.6"/>
+
+  <!-- PIN géolocalisation -->
+  <path d="M512,255 C450,255 405,300 405,360 C405,430 512,510 512,510 C512,510 619,430 619,360 C619,300 574,255 512,255 Z" fill="#2E86C1"/>
+  <path d="M512,255 C450,255 405,300 405,360 C405,430 512,510 512,510 C512,510 619,430 619,360 C619,300 574,255 512,255 Z" fill="none" stroke="#AED6F1" stroke-width="5"/>
+
+  <!-- Cercle intérieur pin -->
+  <circle cx="512" cy="356" r="68" fill="#1A2E4A"/>
+
+  <!-- Camping car dans le pin -->
+  <g transform="translate(474, 330)">
+    <rect x="0" y="8" width="74" height="40" rx="5" fill="#FFFFFF"/>
+    <rect x="52" y="2" width="22" height="46" rx="4" fill="#FFFFFF"/>
+    <rect x="6" y="16" width="28" height="20" rx="3" fill="#AED6F1"/>
+    <rect x="55" y="8" width="15" height="18" rx="3" fill="#AED6F1"/>
+    <circle cx="18" cy="50" r="9" fill="#2E86C1"/>
+    <circle cx="18" cy="50" r="4" fill="#FFFFFF"/>
+    <circle cx="60" cy="50" r="9" fill="#2E86C1"/>
+    <circle cx="60" cy="50" r="4" fill="#FFFFFF"/>
+  </g>
+</svg>
