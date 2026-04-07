@@ -8,6 +8,21 @@ import { supabase } from '../../src/lib/supabase';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
 import { Input } from '../../src/components/ui';
 
+const SPOT_TYPE_LABELS: Record<string, string> = {
+  AA: 'Aire sur autoroute',
+  ACF: 'Accueil à la ferme',
+  AC: 'Camping',
+  ACS: 'Aire de service accessible sur camping',
+  APCC: 'Aire de parking de nuit dédiée aux camping-cars',
+  APN: 'Aire de parking tolérée la nuit pour camping-cars',
+  ASN: 'Aire de service avec stationnement de nuit',
+  AS: 'Aire de service',
+};
+
+function getSpotTypeLabel(typeCode: string): string {
+  return SPOT_TYPE_LABELS[typeCode] ?? typeCode;
+}
+
 type SpotDetail = {
   id: string;
   name: string;
@@ -58,6 +73,17 @@ export default function SpotDetailScreen() {
   const [reviewComment, setReviewComment] = useState('');
   const [reviewLoading, setReviewLoading] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setIsLoggedIn(!!data.session?.user);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session?.user);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -392,9 +418,23 @@ export default function SpotDetailScreen() {
     await refreshRelated();
   };
 
+  const allCarouselPhotos: Array<{ id: string; url: string; badge?: string }> = [
+    ...(googleMedia
+      ? [
+          {
+            id: 'google',
+            url: googleMedia.imageUrl,
+            badge: googleMedia.source === 'places' ? 'Google Places' : 'Google Street View',
+          },
+        ]
+      : []),
+    ...photos.map((p) => ({ id: p.id, url: p.url })),
+  ];
+
   return (
     <ScreenContainer style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* ── Fiche principale ── */}
         <Card style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.title, { color: colors.primary }]}>Fiche Aire</Text>
           {loading ? (
@@ -409,13 +449,13 @@ export default function SpotDetailScreen() {
               <Text style={[styles.name, { color: colors.textPrimary }]}>{spot.name}</Text>
               <View style={[styles.row, styles.typeIconRow]}>
                 <SpotIcon type={toSpotIconType(spot.type)} variant="icon" size={48} />
-                <Badge label={spot.type} variant="service" />
+                <Badge label={getSpotTypeLabel(spot.type)} variant="service" />
                 {spot.city ? <Badge label={spot.city} variant="default" /> : null}
-                <Badge label={spot.isVerified ? 'Verifiee' : 'Non verifiee'} variant={spot.isVerified ? 'success' : 'warning'} />
+                {!spot.isVerified ? <Badge label="À valider" variant="warning" /> : null}
               </View>
               <Text style={[styles.subtitle, { color: colors.textSecondary }]}>ID: {spot.id}</Text>
               <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                Coordonnees: {spot.latitude?.toFixed(6) ?? 'N/A'}, {spot.longitude?.toFixed(6) ?? 'N/A'}
+                Coordonnées : {spot.latitude?.toFixed(6) ?? 'N/A'}, {spot.longitude?.toFixed(6) ?? 'N/A'}
               </Text>
 
               <View style={styles.row}>
@@ -432,15 +472,77 @@ export default function SpotDetailScreen() {
               ) : null}
             </>
           ) : (
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aucune donnee disponible pour cette aire.</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aucune donnée disponible pour cette aire.</Text>
           )}
         </Card>
 
+        {/* ── Carousel photos (Google + utilisateurs) ── */}
+        <Card style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Photos</Text>
+
+          {googleMediaLoading || loadingRelated ? (
+            <View style={styles.loading}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Chargement des photos...</Text>
+            </View>
+          ) : allCarouselPhotos.length === 0 ? (
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aucune photo disponible.</Text>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>
+              {allCarouselPhotos.map((photo) => (
+                <View key={photo.id} style={styles.carouselItem}>
+                  <Image source={{ uri: photo.url }} style={styles.photo} resizeMode="cover" />
+                  {photo.badge ? (
+                    <View style={styles.photoBadgeWrap}>
+                      <Badge label={photo.badge} variant="default" />
+                    </View>
+                  ) : null}
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Ajout d'une photo — grisé si non connecté */}
+          <View style={!isLoggedIn ? styles.lockedSection : undefined}>
+            {!isLoggedIn ? (
+              <Text style={[styles.lockedHint, { color: colors.textMuted }]}>
+                Connectez-vous pour ajouter une photo.
+              </Text>
+            ) : null}
+            <View pointerEvents={isLoggedIn ? 'auto' : 'none'}>
+              <Button
+                label={photoUploading ? 'Upload...' : 'Ajouter une photo'}
+                variant="secondary"
+                onPress={uploadPhoto}
+                disabled={photoUploading}
+              />
+            </View>
+          </View>
+        </Card>
+
+        {/* ── Avis ── */}
         <Card style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Avis</Text>
-          <Input label="Note (1-5)" value={reviewRating} onChangeText={setReviewRating} keyboardType="number-pad" />
-          <Input label="Commentaire" value={reviewComment} onChangeText={setReviewComment} />
-          <Button label={reviewLoading ? 'Publication...' : "Publier mon avis"} onPress={submitReview} disabled={reviewLoading} />
+
+          {/* Formulaire — grisé si non connecté */}
+          <View style={!isLoggedIn ? styles.lockedSection : undefined}>
+            {!isLoggedIn ? (
+              <Text style={[styles.lockedHint, { color: colors.textMuted }]}>
+                Connectez-vous pour laisser un avis.
+              </Text>
+            ) : null}
+            <View pointerEvents={isLoggedIn ? 'auto' : 'none'}>
+              <Input label="Note (1-5)" value={reviewRating} onChangeText={setReviewRating} keyboardType="number-pad" />
+              <Input label="Commentaire" value={reviewComment} onChangeText={setReviewComment} />
+              <Button
+                label={reviewLoading ? 'Publication...' : 'Publier mon avis'}
+                onPress={submitReview}
+                disabled={reviewLoading}
+              />
+            </View>
+          </View>
+
+          {/* Liste des avis existants */}
           {loadingRelated ? (
             <View style={styles.loading}>
               <ActivityIndicator color={colors.primary} />
@@ -464,47 +566,6 @@ export default function SpotDetailScreen() {
                 </Text>
               </View>
             ))
-          )}
-        </Card>
-
-        <Card style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Photo Google</Text>
-          {googleMediaLoading ? (
-            <View style={styles.loading}>
-              <ActivityIndicator color={colors.primary} />
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Chargement de la photo Google...</Text>
-            </View>
-          ) : googleMedia ? (
-            <View style={styles.googlePhotoWrap}>
-              <Image source={{ uri: googleMedia.imageUrl }} style={styles.googlePhoto} resizeMode="cover" />
-              <Badge label={googleMedia.source === 'places' ? 'Google Places' : 'Google Street View'} variant="default" />
-            </View>
-          ) : (
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aucune photo Google disponible.</Text>
-          )}
-        </Card>
-
-        <Card style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Photos</Text>
-          <Button
-            label={photoUploading ? 'Upload...' : 'Ajouter une photo'}
-            variant="secondary"
-            onPress={uploadPhoto}
-            disabled={photoUploading}
-          />
-          {loadingRelated ? (
-            <View style={styles.loading}>
-              <ActivityIndicator color={colors.primary} />
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Chargement des photos...</Text>
-            </View>
-          ) : photos.length === 0 ? (
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aucune photo disponible.</Text>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>
-              {photos.map((photo) => (
-                <Image key={photo.id} source={{ uri: photo.url }} style={styles.photo} resizeMode="cover" />
-              ))}
-            </ScrollView>
           )}
         </Card>
       </ScrollView>
@@ -563,19 +624,27 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     paddingRight: Spacing.sm,
   },
+  carouselItem: {
+    position: 'relative',
+  },
   photo: {
-    width: 180,
-    height: 120,
+    width: 220,
+    height: 150,
     borderRadius: Radius.md,
     backgroundColor: '#D1D5DB',
   },
-  googlePhotoWrap: {
-    gap: Spacing.sm,
+  photoBadgeWrap: {
+    position: 'absolute',
+    bottom: Spacing.xs,
+    left: Spacing.xs,
   },
-  googlePhoto: {
-    width: '100%',
-    height: 220,
-    borderRadius: Radius.md,
-    backgroundColor: '#D1D5DB',
+  lockedSection: {
+    opacity: 0.45,
+    gap: Spacing.xs,
+  },
+  lockedHint: {
+    ...Typography.caption,
+    fontStyle: 'italic',
+    marginBottom: Spacing.xs,
   },
 });
