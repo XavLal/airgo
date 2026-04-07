@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Image, Linking, ScrollView, StyleSheet, Text,
 import { useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Badge, Button, Card, ScreenContainer } from '../../src/components/ui';
+import SpotIcon, { toSpotIconType } from '../../src/components/SpotIcon';
 import { supabase } from '../../src/lib/supabase';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
 import { Input } from '../../src/components/ui';
@@ -350,7 +351,8 @@ export default function SpotDetailScreen() {
           {spot ? (
             <>
               <Text style={[styles.name, { color: colors.textPrimary }]}>{spot.name}</Text>
-              <View style={styles.row}>
+              <View style={[styles.row, styles.typeIconRow]}>
+                <SpotIcon type={toSpotIconType(spot.type)} variant="icon" size={48} />
                 <Badge label={spot.type} variant="service" />
                 {spot.city ? <Badge label={spot.city} variant="default" /> : null}
                 <Badge label={spot.isVerified ? 'Verifiee' : 'Non verifiee'} variant={spot.isVerified ? 'success' : 'warning'} />
@@ -462,6 +464,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.sm,
     flexWrap: 'wrap',
+  },
+  typeIconRow: {
+    alignItems: 'center',
   },
   loading: {
     flexDirection: 'row',

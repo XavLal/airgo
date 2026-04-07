@@ -2,48 +2,31 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import { InteractionManager, Platform } from 'react-native';
 import { SPOT_DELTA_SYNC_TASK } from '../../tasks/spotSyncTask';
 import { getIsOnline } from '../networkStatus';
-import { countLocalSpots, getSpotsDatabase, getSyncMeta } from './client';
-import {
-  META_ASC_BOOTSTRAP_PENDING,
-  runDeltaSpotSyncFromSupabase,
-  runFullSpotSyncFromSupabase,
-  runInitialSeedFromBundledAsc,
-} from './spotSync';
+import { countLocalSpots, getSpotsDatabase } from './client';
+import { runDeltaSpotSyncFromSupabase } from './spotSync';
 
+/**
+ * Initialise la base locale des aires au démarrage.
+ *
+ * Grâce au .db bundlé (copié automatiquement par expo-sqlite au 1er lancement),
+ * la base contient déjà ~24k spots dès l'ouverture.
+ * Seul un delta sync est nécessaire pour rattraper les changements
+ * survenus depuis la génération du .db.
+ */
 export async function bootstrapLocalSpotsData(): Promise<void> {
   if (Platform.OS === 'web') return;
 
   await getSpotsDatabase();
 
-  let n = await countLocalSpots();
-
-  if (n === 0) {
-    const seeded = await runInitialSeedFromBundledAsc();
-    if (!seeded) {
-      const online = await getIsOnline();
-      if (online) {
-        try {
-          await runFullSpotSyncFromSupabase();
-        } catch (e) {
-          console.warn('Synchro initiale des aires impossible', e);
-        }
-      }
-    }
-  }
-
-  n = await countLocalSpots();
+  const n = await countLocalSpots();
   const online = await getIsOnline();
-  const ascPending = (await getSyncMeta(META_ASC_BOOTSTRAP_PENDING)) === '1';
 
-  if (online && n > 0 && !ascPending) {
-    /**
-     * Ne pas lancer le delta en parallèle immédiat des lectures carte (querySpotsInViewport) : sur Android,
-     * expo-sqlite mélange connexion principale + withExclusiveTransactionAsync du sync → crash natif (Scudo /
-     * closeDatabase). On attend la fin des interactions UI puis un court délai.
-     */
+  if (online && n > 0) {
     InteractionManager.runAfterInteractions(() => {
       setTimeout(() => {
-        void runDeltaSpotSyncFromSupabase().catch((e) => console.warn('Delta sync (premier plan)', e));
+        void runDeltaSpotSyncFromSupabase().catch((e) =>
+          console.warn('Delta sync (premier plan)', e),
+        );
       }, 2500);
     });
   }

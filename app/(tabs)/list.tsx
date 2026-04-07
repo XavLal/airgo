@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { TypeFilterBar } from '../../src/components/TypeFilterBar';
+import SpotIcon, { toSpotIconType } from '../../src/components/SpotIcon';
 import { Badge, Button, Card, ScreenContainer } from '../../src/components/ui';
 import { countLocalSpots } from '../../src/lib/localDb/client';
 import { querySpotsWithinRadiusKm } from '../../src/lib/localDb/spotQueries';
@@ -190,7 +191,10 @@ export default function ListScreen() {
           renderItem={({ item, index }) => (
             <Card style={[styles.itemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={styles.itemTop}>
-                <Text style={[styles.itemName, { color: colors.textPrimary }]}>{item.name}</Text>
+                <SpotIcon type={toSpotIconType(item.type)} variant="icon" size={44} />
+                <View style={styles.itemTitleBlock}>
+                  <Text style={[styles.itemName, { color: colors.textPrimary }]}>{item.name}</Text>
+                </View>
                 <Badge label={`#${index + 1}`} variant="default" />
               </View>
               <View style={styles.row}>
@@ -278,11 +282,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  itemTitleBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   itemName: {
     ...Typography.body,
     fontWeight: '600',
-    flex: 1,
-    marginRight: Spacing.sm,
   },
 });

@@ -1,6 +1,15 @@
 import * as SQLite from 'expo-sqlite';
+import { importDatabaseFromAssetAsync } from 'expo-sqlite';
 import { Platform } from 'react-native';
 import { MIGRATION_SQL, SPOTS_DB_NAME } from './schema';
+
+/**
+ * Asset bundlé : le .db pré-rempli généré par `npm run generate-db`.
+ * `importDatabaseFromAssetAsync` copie ce fichier dans le répertoire SQLite
+ * au 1er lancement uniquement (forceOverwrite = false).
+ * Les lancements suivants réutilisent la copie locale mise à jour via delta sync.
+ */
+const BUNDLED_DB_ASSET: number = require('../../../assets/data/airgo-spots.db') as number;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -27,7 +36,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS spots_rtree USING rtree(
 );
 `;
 
-/** Pour usage quand `db` est déjà obtenu dans le même bloc `withSerializedDb` (évite imbrication). */
 export async function isRtreeEnabledOnDb(db: SQLite.SQLiteDatabase): Promise<boolean> {
   return rtreeTableExists(db);
 }
@@ -58,11 +66,6 @@ async function rebuildSpotsRtreeFromPack(db: SQLite.SQLiteDatabase): Promise<voi
   const rows =
     (await db.getAllAsync<{ pk: number; lng: number; lat: number }>('SELECT pk, lng, lat FROM spots_pack')) ?? [];
 
-  /**
-   * Transaction sur la connexion principale uniquement : withExclusiveTransactionAsync ouvre une 2e connexion
-   * (fermeture native → risque Scudo / SIGABRT si ça chevauche d’autres accès). Au cold start, aucune autre
-   * requête ne doit être en vol sur cette DB ; withTransactionAsync évite la connexion dédiée.
-   */
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM spots_rtree');
     for (const r of rows) {
@@ -77,13 +80,11 @@ async function rebuildSpotsRtreeFromPack(db: SQLite.SQLiteDatabase): Promise<voi
   });
 }
 
-/** Si la table R-Tree existe mais pas une entrée par ligne pack (ex. données créées sans RTREE puis build avec RTREE), le JOIN carte renvoie 0 ligne. */
 async function alignSpotsRtreeWithPackIfNeeded(db: SQLite.SQLiteDatabase): Promise<void> {
   const has = await rtreeTableExists(db);
   if (!has) return;
   const packRow = await db.getFirstAsync<{ c: number }>('SELECT COUNT(*) AS c FROM spots_pack');
   const treeRow = await db.getFirstAsync<{ c: number }>('SELECT COUNT(*) AS c FROM spots_rtree');
-  /** COUNT(*) peut arriver en string selon le bridge natif ; sans ça, tc === pc échoue → rebuild énorme à chaque cold start. */
   const pc = Number(packRow?.c ?? 0);
   const tc = Number(treeRow?.c ?? 0);
   if (pc === 0 || tc === pc) return;
@@ -91,13 +92,16 @@ async function alignSpotsRtreeWithPackIfNeeded(db: SQLite.SQLiteDatabase): Promi
 }
 
 async function openAndMigrate(): Promise<SQLite.SQLiteDatabase> {
+  await importDatabaseFromAssetAsync(SPOTS_DB_NAME, { assetId: BUNDLED_DB_ASSET });
+
   const db = await SQLite.openDatabaseAsync(SPOTS_DB_NAME);
+
   await db.execAsync(MIGRATION_SQL);
 
   try {
     await db.execAsync(RTREE_SQL);
   } catch {
-    /* Expo Go : binaire SQLite sans l’extension R-Tree → create échoue */
+    /* Expo Go : binaire SQLite sans l'extension R-Tree → create échoue */
   }
 
   let hasRtree = await rtreeTableExists(db);
@@ -122,7 +126,6 @@ async function openAndMigrate(): Promise<SQLite.SQLiteDatabase> {
   return db;
 }
 
-/** Vrai seulement si la table virtuelle existe réellement (pas seulement sync_meta). */
 export async function isRtreeEnabled(): Promise<boolean> {
   return withSerializedDb(async () => {
     const db = await getSpotsDatabase();

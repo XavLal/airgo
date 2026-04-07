@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <rect width="120" height="120" rx="16" fill="#D7B896"/>
+  <rect x="20" y="62" width="80" height="44" rx="3" fill="#6D4C41"/>
+  <polygon points="12,64 60,28 108,64" fill="#4E342E"/>
+  <rect x="46" y="76" width="28" height="30" rx="2" fill="#D7B896"/>
+  <path d="M46,84 Q60,70 74,84" fill="#4E342E"/>
+  <rect x="24" y="70" width="14" height="14" rx="2" fill="#D7B896" opacity="0.8"/>
+  <rect x="82" y="70" width="14" height="14" rx="2" fill="#D7B896" opacity="0.8"/>
+  <circle cx="60" cy="20" r="8" fill="#FDD835"/>
+  <line x1="60" y1="8"  x2="60" y2="4"  stroke="#FDD835" stroke-width="2" stroke-linecap="round"/>
+  <line x1="70" y1="12" x2="73" y2="9"  stroke="#FDD835" stroke-width="2" stroke-linecap="round"/>
+  <line x1="72" y1="20" x2="76" y2="20" stroke="#FDD835" stroke-width="2" stroke-linecap="round"/>
+  <line x1="50" y1="12" x2="47" y2="9"  stroke="#FDD835" stroke-width="2" stroke-linecap="round"/>
+  <line x1="48" y1="20" x2="44" y2="20" stroke="#FDD835" stroke-width="2" stroke-linecap="round"/>
+</svg>

@@ -11,3 +11,8 @@ web-build/
 # OS
 .DS_Store
 *.log
+
+# Android release signing (ne jamais committer)
+android/keystore.properties
+android/*.jks
+android/*.keystore

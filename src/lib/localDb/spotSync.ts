@@ -1,33 +1,20 @@
 import type * as SQLite from 'expo-sqlite';
-import { Asset } from 'expo-asset';
 import { parsePostgisEwkbPoint2dHex } from '../parsePostgisEwkbHex';
 import { supabase } from '../supabase';
-import { parseAscSpotLine } from './ascSpotLine';
 import {
   getSpotsDatabase,
-  getSyncMeta,
   isRtreeEnabledOnDb,
   setSyncMeta,
+  getSyncMeta,
   withSerializedDb,
 } from './client';
 import { emitSpotsLocalDbChanged } from './spotSyncEvents';
 import type { PackInsert } from './spotSyncTypes';
 
-/** Après un remplissage initial depuis le fichier .asc, la 1re synchro réseau doit être un import complet (UUID Supabase ≠ cci:). */
-export const META_ASC_BOOTSTRAP_PENDING = 'asc_bootstrap_pending';
-
-/** Plus de lignes par page = moins d’aller-retour réseau ; écriture SQLite découpée (voir SQLITE_TX_CHUNK). */
 const PAGE_SIZE = 1000;
-
-/** Limite la taille d’une transaction SQLite : sur Android, ~1k upserts d’affilée peut provoquer « cannot rollback - no transaction is active ». */
 const SQLITE_TX_CHUNK = 120;
-const META_FULL_SYNC = 'initial_full_sync_done';
 const META_LAST_DELTA = 'last_delta_sync_at';
 
-/**
- * Transaction sur la connexion principale (pas `withExclusiveTransactionAsync` : 2e connexion → crash Android).
- * À appeler uniquement **dans** un bloc `withSerializedDb` déjà ouvert par l’appelant.
- */
 async function runExclusiveWrite(
   db: SQLite.SQLiteDatabase,
   task: (writer: SQLite.SQLiteDatabase) => Promise<void>,
@@ -35,10 +22,6 @@ async function runExclusiveWrite(
   await db.withTransactionAsync(async () => task(db));
 }
 
-/**
- * Soft delete côté Supabase : la ligne reste dans `spots` avec `updated_at` bumpé.
- * Colonnes reconnues : `deleted_at` (non vide), `is_deleted` / `deleted` (true).
- */
 export function isSoftDeletedRow(row: Record<string, unknown>): boolean {
   if (row.is_deleted === true || row.deleted === true) return true;
   const da = row.deleted_at;
@@ -146,17 +129,6 @@ async function upsertPackRowInner(db: SQLite.SQLiteDatabase, rtree: boolean, pac
   }
 }
 
-async function upsertPackRow(pack: PackInsert): Promise<void> {
-  await withSerializedDb(async () => {
-    const db = await getSpotsDatabase();
-    const rtree = await isRtreeEnabledOnDb(db);
-    await runExclusiveWrite(db, async (w) => {
-      await upsertPackRowInner(w, rtree, pack);
-    });
-  });
-}
-
-/** Retire une aire du pack local (et R-Tree si actif). No-op si absente. */
 async function deleteLocalSpotBySpotIdInner(db: SQLite.SQLiteDatabase, rtree: boolean, spotId: string): Promise<void> {
   const ex = await db.getFirstAsync<{ pk: number }>('SELECT pk FROM spots_pack WHERE spot_id = ?', [spotId]);
   if (ex?.pk == null) return;
@@ -164,150 +136,11 @@ async function deleteLocalSpotBySpotIdInner(db: SQLite.SQLiteDatabase, rtree: bo
   await db.runAsync('DELETE FROM spots_pack WHERE spot_id = ?', [spotId]);
 }
 
-async function deleteLocalSpotBySpotId(spotId: string): Promise<void> {
-  await withSerializedDb(async () => {
-    const db = await getSpotsDatabase();
-    const rtree = await isRtreeEnabledOnDb(db);
-    await runExclusiveWrite(db, async (w) => {
-      await deleteLocalSpotBySpotIdInner(w, rtree, spotId);
-    });
-  });
-}
-
-async function clearLocalSpots(): Promise<void> {
-  await withSerializedDb(async () => {
-    const db = await getSpotsDatabase();
-    await runExclusiveWrite(db, async (w) => {
-      await w.runAsync('DELETE FROM spots_rtree');
-      await w.runAsync('DELETE FROM spots_pack');
-    });
-  });
-}
-
 /**
- * Import complet (première ouverture). Paginate `spots` côté Supabase.
- * La table doit exposer `id`, champs métier, géométrie ou lat/lng, et de préférence `updated_at`.
- * Les lignes soft-deleted (`deleted_at` / `is_deleted`) sont ignorées : elles ne sont pas réinsérées.
- */
-export async function runFullSpotSyncFromSupabase(): Promise<void> {
-  let offset = 0;
-
-  await clearLocalSpots();
-  await setSyncMeta(META_FULL_SYNC, '0');
-
-  for (;;) {
-    const { data, error } = await supabase
-      .from('spots')
-      .select('*')
-      .order('id', { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
-
-    if (error) {
-      await clearLocalSpots();
-      throw new Error(error.message);
-    }
-
-    const rows = (data ?? []) as Record<string, unknown>[];
-    if (rows.length === 0) break;
-
-    const packs: PackInsert[] = [];
-    for (const raw of rows) {
-      const spotId = String(raw.id ?? '');
-      if (!spotId) continue;
-      if (isSoftDeletedRow(raw)) continue;
-      const pack = rowToPack(raw);
-      if (pack) packs.push(pack);
-    }
-
-    await withSerializedDb(async () => {
-      const db = await getSpotsDatabase();
-      const rtree = await isRtreeEnabledOnDb(db);
-      for (let i = 0; i < packs.length; i += SQLITE_TX_CHUNK) {
-        const chunk = packs.slice(i, i + SQLITE_TX_CHUNK);
-        await runExclusiveWrite(db, async (w) => {
-          for (const pack of chunk) {
-            await upsertPackRowInner(w, rtree, pack);
-          }
-        });
-      }
-    });
-
-    offset += rows.length;
-    if (rows.length < PAGE_SIZE) break;
-  }
-
-  await setSyncMeta(META_FULL_SYNC, '1');
-  await setSyncMeta(META_LAST_DELTA, new Date().toISOString());
-  await setSyncMeta(META_ASC_BOOTSTRAP_PENDING, '0');
-  emitSpotsLocalDbChanged();
-}
-
-async function loadBundledAscText(): Promise<string> {
-  const assetIdRaw: unknown = require('../../../assets/data/ATOTALES_CCI.asc');
-  const assetId = assetIdRaw as number;
-  const asset = Asset.fromModule(assetId);
-  await asset.downloadAsync();
-  const uri = asset.localUri;
-  if (uri == null || uri === '') throw new Error('Asset .asc introuvable après téléchargement local.');
-  const res = await fetch(uri);
-  if (!res.ok) throw new Error(`Lecture .asc impossible (${res.status})`);
-  return await res.text();
-}
-
-/**
- * Premier remplissage SQLite depuis le bundle (rapide, hors réseau).
- * @returns true si au moins une aire a été insérée
- */
-export async function runInitialSeedFromBundledAsc(): Promise<boolean> {
-  let text: string;
-  try {
-    text = await loadBundledAscText();
-  } catch (e) {
-    console.warn('Chargement ATOTALES_CCI.asc (bundle) impossible', e);
-    return false;
-  }
-
-  const lines = text.split(/\n/);
-  const packs: PackInsert[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const pack = parseAscSpotLine(lines[i] ?? '', i);
-    if (pack) packs.push(pack);
-  }
-
-  if (packs.length === 0) return false;
-
-  await withSerializedDb(async () => {
-    const db = await getSpotsDatabase();
-    const rtree = await isRtreeEnabledOnDb(db);
-    for (let i = 0; i < packs.length; i += SQLITE_TX_CHUNK) {
-      const chunk = packs.slice(i, i + SQLITE_TX_CHUNK);
-      await runExclusiveWrite(db, async (w) => {
-        for (const pack of chunk) {
-          await upsertPackRowInner(w, rtree, pack);
-        }
-      });
-    }
-  });
-
-  await setSyncMeta(META_ASC_BOOTSTRAP_PENDING, '1');
-  emitSpotsLocalDbChanged();
-  return true;
-}
-
-export async function isAscBootstrapPending(): Promise<boolean> {
-  return (await getSyncMeta(META_ASC_BOOTSTRAP_PENDING)) === '1';
-}
-
-/**
- * Delta : `updated_at` strictement après la dernière synchro enregistrée.
- * Les soft deletes sont propagés par suppression locale (`deleted_at` / `is_deleted`).
+ * Delta sync : récupère les spots modifiés depuis la dernière synchronisation.
+ * Propagation des soft deletes par suppression locale.
  */
 export async function runDeltaSpotSyncFromSupabase(): Promise<void> {
-  if ((await getSyncMeta(META_ASC_BOOTSTRAP_PENDING)) === '1') {
-    await runFullSpotSyncFromSupabase();
-    return;
-  }
-
   const last = await getSyncMeta(META_LAST_DELTA);
   const since = last ?? '1970-01-01T00:00:00.000Z';
 

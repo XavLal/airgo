@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <rect width="120" height="120" rx="16" fill="#1A237E"/>
+  <rect x="10" y="40" width="100" height="46" rx="7" fill="white" opacity="0.92"/>
+  <rect x="10" y="30" width="40" height="56" rx="6" fill="white" opacity="0.92"/>
+  <rect x="15" y="35" width="22" height="18" rx="3" fill="#1A237E"/>
+  <rect x="64" y="46" width="30" height="20" rx="3" fill="#1A237E"/>
+  <circle cx="30" cy="88" r="11" fill="#1A237E"/>
+  <circle cx="30" cy="88" r="6.5" fill="white" opacity="0.92"/>
+  <circle cx="88" cy="88" r="11" fill="#1A237E"/>
+  <circle cx="88" cy="88" r="6.5" fill="white" opacity="0.92"/>
+  <rect x="10" y="100" width="100" height="14" rx="3" fill="#0D1757"/>
+  <text x="60" y="111" font-family="sans-serif" font-size="11" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="white">P</text>
+  <circle cx="90" cy="20" r="3" fill="white" opacity="0.55"/>
+  <circle cx="104" cy="30" r="2" fill="white" opacity="0.4"/>
+  <circle cx="78" cy="14" r="1.5" fill="white" opacity="0.35"/>
+</svg>

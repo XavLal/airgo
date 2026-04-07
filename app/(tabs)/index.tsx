@@ -6,22 +6,17 @@ import MapView, { Marker, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { TypeFilterBar } from '../../src/components/TypeFilterBar';
 import { Badge, Button, Card } from '../../src/components/ui';
-import SpotIcon, { type SpotType } from '../../src/components/SpotIcon';
-import { SPOT_TYPE_CODES } from '../../src/constants/spotTypes';
+import SpotIcon, { type SpotType, toSpotIconType } from '../../src/components/SpotIcon';
 import { countLocalSpots } from '../../src/lib/localDb/client';
 import { querySpotsInViewport, VIEWPORT_QUERY_HARD_CAP } from '../../src/lib/localDb/spotQueries';
 import { onSpotsLocalDbChanged } from '../../src/lib/localDb/spotSyncEvents';
-import {
-  isAscBootstrapPending,
-  runDeltaSpotSyncFromSupabase,
-  runFullSpotSyncFromSupabase,
-} from '../../src/lib/localDb/spotSync';
+import { runDeltaSpotSyncFromSupabase } from '../../src/lib/localDb/spotSync';
 import { buildClusterIndex, spotsToFeatures, zoomFromRegion } from '../../src/lib/mapClusterHelpers';
 import type { Feature, Point } from 'geojson';
 import { regionToBounds } from '../../src/lib/mapRegionBounds';
 import { getIsOnline } from '../../src/lib/networkStatus';
 import type { ParsedSpotBase } from '../../src/lib/parseSpotRows';
-import { DarkColors, Radius, Spacing, Typography, useTheme } from '../../src/theme';
+import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
 
 const DEFAULT_REGION: Region = {
   latitude: 46.2276,
@@ -55,6 +50,7 @@ function packToMarker(spotId: string, name: string, type: string, lat: number, l
 }
 
 const TRACK_VIEWS_DELAY_MS = 350;
+const CLUSTER_BUBBLE_SIZE = 36;
 
 function useDelayedTrack(): boolean {
   const [tracked, setTracked] = useState(Platform.OS === 'android');
@@ -82,14 +78,30 @@ const MapClusterMarker = React.memo(function MapClusterMarker({
   onPress: () => void;
 }) {
   const tracked = useDelayedTrack();
+  const label = count > 99 ? '99+' : String(count);
+  const shouldTrack = tracked;
   return (
     <Marker
       coordinate={{ latitude, longitude }}
-      tracksViewChanges={tracked}
+      tracksViewChanges={shouldTrack}
       onPress={onPress}
     >
-      <View style={[styles.clusterBubble, bubbleStyle]}>
-        <Text style={styles.clusterText}>{count}</Text>
+      <View
+        collapsable={false}
+        style={[
+          styles.clusterMarkerHitSlop,
+          {
+            width: CLUSTER_BUBBLE_SIZE,
+            height: CLUSTER_BUBBLE_SIZE,
+            borderRadius: CLUSTER_BUBBLE_SIZE / 2,
+            backgroundColor: bubbleStyle.backgroundColor,
+            borderColor: bubbleStyle.borderColor,
+          },
+        ]}
+      >
+        <Text numberOfLines={1} allowFontScaling={false} style={styles.clusterText}>
+          {label}
+        </Text>
       </View>
     </Marker>
   );
@@ -103,7 +115,6 @@ const MapSpotMarker = React.memo(function MapSpotMarker({
   typeCode,
   isVerified,
   spotType,
-  pinBg,
   unverifiedColor,
   onOpen,
 }: {
@@ -114,7 +125,6 @@ const MapSpotMarker = React.memo(function MapSpotMarker({
   typeCode: string;
   isVerified: boolean;
   spotType: SpotType;
-  pinBg: string;
   unverifiedColor: string;
   onOpen: (id: string) => void;
 }) {
@@ -137,7 +147,7 @@ const MapSpotMarker = React.memo(function MapSpotMarker({
             : null,
         ]}
       >
-        <SpotIcon type={spotType} variant="pin" size={34} pinBackgroundColor={pinBg} />
+        <SpotIcon type={spotType} variant="pin" size={34} />
       </View>
     </Marker>
   );
@@ -180,20 +190,10 @@ export default function MapScreen() {
 
   const hasLocationAccess = permissionStatus === 'granted';
 
-  const mapPinFill = useMemo(
-    () => (colors.background === DarkColors.background ? '#F0F7F2' : colors.surface),
-    [colors.background, colors.surface],
-  );
-
   const clusterBubbleColors = useMemo(
     () => ({ backgroundColor: colors.primary, borderColor: colors.primaryDark }),
     [colors.primary, colors.primaryDark],
   );
-
-  const normalizeSpotType = useCallback((type: string): SpotType => {
-    const hasKnownCode = (SPOT_TYPE_CODES as readonly string[]).includes(type);
-    return (hasKnownCode ? type : 'OTHER') as SpotType;
-  }, []);
 
   const handleOpenSpot = useCallback(
     (id: string) => {
@@ -300,15 +300,7 @@ export default function MapScreen() {
     }
     setSyncing(true);
     try {
-      const nBefore = await countLocalSpots();
-      const ascPending = await isAscBootstrapPending();
-      if (ascPending) {
-        await runFullSpotSyncFromSupabase();
-      } else if (nBefore === 0) {
-        await runFullSpotSyncFromSupabase();
-      } else {
-        await runDeltaSpotSyncFromSupabase();
-      }
+      await runDeltaSpotSyncFromSupabase();
       await refreshViewport(region);
       const n = await countLocalSpots();
       setLocalSpotCount(n);
@@ -425,8 +417,7 @@ export default function MapScreen() {
               name={props.name}
               typeCode={props.type}
               isVerified={Boolean(props.isVerified)}
-              spotType={normalizeSpotType(props.type)}
-              pinBg={mapPinFill}
+              spotType={toSpotIconType(props.type)}
               unverifiedColor={colors.unverified}
               onOpen={handleOpenSpot}
             />
@@ -608,18 +599,16 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     flexWrap: 'wrap',
   },
-  clusterBubble: {
-    minWidth: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
+  clusterMarkerHitSlop: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    borderWidth: 2,
   },
   clusterText: {
     color: '#FFFFFF',
     fontWeight: '800',
-    fontSize: 14,
+    fontSize: 12,
+    includeFontPadding: false,
+    textAlign: 'center',
   },
 });
