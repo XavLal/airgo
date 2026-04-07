@@ -58,6 +58,18 @@ Le projet se distingue par son approche communautaire : les ajouts d'aires par l
     ```
     Scannez le QR code généré avec l'application Expo Go sur votre téléphone pour voir l'application
 
+5. **Configurer la photo Google en cache partagé (Edge Function) :**
+   - Ajouter une clé API Google Maps (Places + Street View activés) dans les secrets Supabase :
+   ```bash
+   supabase secrets set GOOGLE_MAPS_API_KEY=votre_cle_google_maps
+   ```
+   - Déployer les migrations et la fonction :
+   ```bash
+   supabase db push
+   supabase functions deploy spot-google-media
+   ```
+   - Principe : au premier affichage d'une fiche aire, l'app appelle la fonction qui tente une photo Google Places, sinon Street View. L'image est stockée dans un bucket public et réutilisée ensuite pour tous les utilisateurs.
+
 ## 🗄️ Initialisation de la Base de Données (Script d'import)
 
 La base de données initiale contient plusieurs milliers de points géographiques. Ils sont ingérés via un script Node.js situé dans `/scripts/import-spots.mjs` qui parse un fichier source `ATOTALES_CCI.asc`.

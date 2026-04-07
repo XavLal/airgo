@@ -30,6 +30,12 @@ type SpotPhoto = {
   url: string;
 };
 
+interface SpotGoogleMedia {
+  source: 'places' | 'street_view';
+  imageUrl: string;
+  fetchedAt: string;
+}
+
 export default function SpotDetailScreen() {
   const { colors } = useTheme();
   const { id, name, type, lat, lng, verified } = useLocalSearchParams<{
@@ -45,6 +51,8 @@ export default function SpotDetailScreen() {
   const [loadingRelated, setLoadingRelated] = useState(false);
   const [reviews, setReviews] = useState<SpotReview[]>([]);
   const [photos, setPhotos] = useState<SpotPhoto[]>([]);
+  const [googleMedia, setGoogleMedia] = useState<SpotGoogleMedia | null>(null);
+  const [googleMediaLoading, setGoogleMediaLoading] = useState(false);
   const [voteLoading, setVoteLoading] = useState(false);
   const [reviewRating, setReviewRating] = useState('5');
   const [reviewComment, setReviewComment] = useState('');
@@ -144,6 +152,54 @@ export default function SpotDetailScreen() {
       }
     })();
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    if (spot?.latitude == null || spot?.longitude == null) return;
+
+    setGoogleMediaLoading(true);
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('spot-google-media', {
+          body: {
+            spotId: id,
+            latitude: spot.latitude,
+            longitude: spot.longitude,
+            name: spot.name,
+          },
+        });
+
+        if (error) {
+          if (!error.message.includes('404')) {
+            Alert.alert('Photos Google', `Impossible de charger la photo Google: ${error.message}`);
+          }
+          return;
+        }
+
+        const payload = data as {
+          source?: 'places' | 'street_view';
+          imageUrl?: string;
+          fetchedAt?: string;
+        } | null;
+
+        if (!payload?.source || !payload.imageUrl || !payload.fetchedAt) {
+          setGoogleMedia(null);
+          return;
+        }
+
+        setGoogleMedia({
+          source: payload.source,
+          imageUrl: payload.imageUrl,
+          fetchedAt: payload.fetchedAt,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        Alert.alert('Photos Google', `Erreur inattendue: ${message}`);
+      } finally {
+        setGoogleMediaLoading(false);
+      }
+    })();
+  }, [id, spot?.latitude, spot?.longitude, spot?.name]);
 
   const refreshRelated = async () => {
     if (!id) return;
@@ -412,6 +468,23 @@ export default function SpotDetailScreen() {
         </Card>
 
         <Card style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Photo Google</Text>
+          {googleMediaLoading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Chargement de la photo Google...</Text>
+            </View>
+          ) : googleMedia ? (
+            <View style={styles.googlePhotoWrap}>
+              <Image source={{ uri: googleMedia.imageUrl }} style={styles.googlePhoto} resizeMode="cover" />
+              <Badge label={googleMedia.source === 'places' ? 'Google Places' : 'Google Street View'} variant="default" />
+            </View>
+          ) : (
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aucune photo Google disponible.</Text>
+          )}
+        </Card>
+
+        <Card style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Photos</Text>
           <Button
             label={photoUploading ? 'Upload...' : 'Ajouter une photo'}
@@ -493,6 +566,15 @@ const styles = StyleSheet.create({
   photo: {
     width: 180,
     height: 120,
+    borderRadius: Radius.md,
+    backgroundColor: '#D1D5DB',
+  },
+  googlePhotoWrap: {
+    gap: Spacing.sm,
+  },
+  googlePhoto: {
+    width: '100%',
+    height: 220,
     borderRadius: Radius.md,
     backgroundColor: '#D1D5DB',
   },
