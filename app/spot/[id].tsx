@@ -357,10 +357,23 @@ export default function SpotDetailScreen() {
       return;
     }
 
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-    });
+    let picked: ImagePicker.ImagePickerResult;
+    try {
+      picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.7,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error('[uploadPhoto] launchImageLibraryAsync', e);
+      Alert.alert(
+        'Galerie indisponible',
+        message.includes('getServices')
+          ? 'Installe la dernière build (expo run:android) et désinstalle l’app avant de réinstaller — versions natives incohérentes.'
+          : message,
+      );
+      return;
+    }
     if (picked.canceled || !picked.assets[0]) return;
 
     setPhotoUploading(true);
