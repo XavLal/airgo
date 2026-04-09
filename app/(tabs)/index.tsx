@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import MapView, { Marker, type Region } from 'react-native-maps';
@@ -17,6 +18,7 @@ import { regionToBounds } from '../../src/lib/mapRegionBounds';
 import { getIsOnline } from '../../src/lib/networkStatus';
 import type { ParsedSpotBase } from '../../src/lib/parseSpotRows';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
+import { supabase } from '../../src/lib/supabase';
 
 const DEFAULT_REGION: Region = {
   latitude: 46.2276,
@@ -160,9 +162,12 @@ const mapMarkerStyles = StyleSheet.create({
   },
 });
 
+const TAB_BAR_HEIGHT = 49;
+
 export default function MapScreen() {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
   const clusterIndexRef = useRef<ReturnType<typeof buildClusterIndex> | null>(null);
@@ -181,8 +186,15 @@ export default function MapScreen() {
   const [filterTypes, setFilterTypes] = useState<string[] | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   regionRef.current = region;
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setIsLoggedIn(!!data.session?.user));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setIsLoggedIn(!!session?.user));
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   const onRegionChangeComplete = useCallback((r: Region) => {
     setRegion(withMinimumDeltas(r));
@@ -425,85 +437,25 @@ export default function MapScreen() {
         })}
       </MapView>
 
-      <View style={styles.overlay} pointerEvents="box-none">
-        <View style={styles.controlsRow} pointerEvents="auto">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('map.title')}
-            onPress={() => setIsInfoOpen((v) => !v)}
-            style={[styles.roundButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            {loadingSpots ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <View style={styles.burger}>
-                <View style={[styles.burgerLine, { backgroundColor: colors.textPrimary }]} />
-                <View style={[styles.burgerLine, { backgroundColor: colors.textPrimary }]} />
-                <View style={[styles.burgerLine, { backgroundColor: colors.textPrimary }]} />
-              </View>
-            )}
-          </Pressable>
-
-          {isInfoOpen ? (
-            <View style={styles.headerRightRow}>
-              <Button
-                label={loadingLocation ? t('map.locating') : t('map.recenter')}
-                onPress={requestAndLocate}
-                disabled={loadingLocation}
-                variant="secondary"
-                size="md"
-                style={styles.recenterHeaderButton}
-              />
-              <Button
-                label="+"
-                size="md"
-                variant="secondary"
-                onPress={() => router.push('/add-spot')}
-                accessibilityLabel={t('map.addSpot')}
-                style={styles.headerAddButton}
-              />
-            </View>
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('map.recenter')}
-              onPress={requestAndLocate}
-              disabled={loadingLocation}
-              style={[styles.recenterButtonRound, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            >
-              <Text style={[styles.recenterButtonText, { color: colors.textPrimary }]}>{'⌖'}</Text>
-            </Pressable>
-          )}
-        </View>
-
+      <View
+        style={[styles.overlay, { bottom: TAB_BAR_HEIGHT + insets.bottom }]}
+        pointerEvents="box-none"
+      >
+        {/* Panel filtre — s'ouvre au-dessus des boutons */}
         {isInfoOpen ? (
           <Card elevated style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.title, { color: colors.primary }]}>{t('map.title')}</Text>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('map.subtitle')}</Text>
-
-            <View style={styles.row}>
-              <Badge
-                label={t('map.spotsInRadius', { count: localSpotCount != null ? displayedSpotCount : 0 })}
-                variant="service"
-              />
-              <Badge label={t('map.legendUnverified')} variant="warning" />
+            <View style={styles.filterHeaderRow}>
+              <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('map.filtersTitle')}</Text>
+              {loadingSpots ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Badge
+                  label={`${localSpotCount != null ? displayedSpotCount : 0} résultats`}
+                  variant="service"
+                />
+              )}
             </View>
-            {localSpotCount != null && localSpotCount > 0 ? (
-              <Text style={[styles.meta, { color: colors.textMuted }]}>
-                {t('map.localIndexHint', { total: localSpotCount, inView: viewportRowCount })}
-              </Text>
-            ) : (
-              <Text style={[styles.meta, { color: colors.textMuted }]}>{t('map.localIndexEmpty')}</Text>
-            )}
-
-            {loadingSpots ? (
-              <View style={styles.row}>
-                <ActivityIndicator color={colors.service} />
-              </View>
-            ) : null}
-
-            <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('map.filtersTitle')}</Text>
-            <TypeFilterBar value={filterTypes} onChange={setFilterTypes} />
+            <TypeFilterBar value={filterTypes} onChange={setFilterTypes} variant="list" />
 
             <Button
               label={syncing ? t('map.syncRunning') : t('map.syncFromServer')}
@@ -514,6 +466,54 @@ export default function MapScreen() {
             />
           </Card>
         ) : null}
+
+        {/* Barre de contrôles en bas */}
+        <View style={styles.controlsRow} pointerEvents="auto">
+          {/* Gauche : recentrer */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('map.recenter')}
+            onPress={requestAndLocate}
+            disabled={loadingLocation}
+            style={[styles.roundButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
+            {loadingLocation ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <Text style={[styles.recenterButtonText, { color: colors.textPrimary }]}>{'⌖'}</Text>
+            )}
+          </Pressable>
+
+          {/* Droite : bouton + (si panneau ouvert et connecté) + burger */}
+          <View style={styles.rightButtonsRow}>
+            {isInfoOpen && isLoggedIn ? (
+              <Button
+                label="+"
+                size="md"
+                variant="secondary"
+                onPress={() => router.push('/add-spot')}
+                accessibilityLabel={t('map.addSpot')}
+                style={styles.addButton}
+              />
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('map.title')}
+              onPress={() => setIsInfoOpen((v) => !v)}
+              style={[styles.roundButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              {loadingSpots ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <View style={styles.burger}>
+                  <View style={[styles.burgerLine, { backgroundColor: colors.textPrimary }]} />
+                  <View style={[styles.burgerLine, { backgroundColor: colors.textPrimary }]} />
+                  <View style={[styles.burgerLine, { backgroundColor: colors.textPrimary }]} />
+                </View>
+              )}
+            </Pressable>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -523,10 +523,10 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   overlay: {
     position: 'absolute',
-    top: Spacing.xxl + Spacing.md,
     left: Spacing.lg,
     right: Spacing.lg,
     zIndex: 10,
+    gap: Spacing.sm,
   },
   controlsRow: {
     flexDirection: 'row',
@@ -534,64 +534,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
+  rightButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   roundButton: {
-    width: 44,
-    height: 44,
+    width: 52,
+    height: 52,
     borderRadius: Radius.pill,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   burger: {
-    width: 20,
-    gap: 4,
+    width: 22,
+    gap: 5,
   },
   burgerLine: {
-    height: 2.2,
+    height: 2.4,
     borderRadius: 2,
     width: '100%',
   },
-  recenterButtonRound: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   recenterButtonText: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '800',
   },
-  headerRightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  headerAddButton: {
-    width: 44,
+  addButton: {
+    width: 52,
+    height: 52,
     paddingHorizontal: 0,
     borderRadius: Radius.pill,
-    height: 44,
-  },
-  recenterHeaderButton: {
-    height: 44,
-    alignSelf: 'center',
   },
   panel: {
     gap: Spacing.sm,
     borderRadius: Radius.lg,
     width: '100%',
-    marginTop: Spacing.sm,
   },
-  title: { ...Typography.title },
-  subtitle: { ...Typography.subtitle },
-  meta: { ...Typography.caption },
+  filterHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   filterLabel: {
     ...Typography.caption,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    marginTop: Spacing.xs,
+    flex: 1,
   },
   row: {
     flexDirection: 'row',

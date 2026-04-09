@@ -50,6 +50,7 @@
     "plugins": [
       "expo-router",
       "expo-location",
+      "expo-localization",
       "expo-image-picker",
       "expo-background-fetch",
       [

@@ -14,6 +14,8 @@ import { loadSpotsOfflineSnapshot } from '../../src/lib/spotsOfflineCache';
 import { fetchSpotsNearby, type NearbySpotRow } from '../../src/lib/spotsNearbyRpc';
 import { parseSpotsFromNearbyRows } from '../../src/lib/parseSpotRows';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
+import { getSpotTypeLabel } from '../../src/constants/spotTypes';
+import { supabase } from '../../src/lib/supabase';
 
 type SpotRow = {
   id: string;
@@ -53,6 +55,13 @@ export default function ListScreen() {
   const [loading, setLoading] = useState(false);
   const [spots, setSpots] = useState<SpotRow[]>([]);
   const [filterTypes, setFilterTypes] = useState<string[] | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setIsLoggedIn(!!data.session?.user));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setIsLoggedIn(!!session?.user));
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   const loadNearbyList = useCallback(async () => {
     setLoading(true);
@@ -149,14 +158,11 @@ export default function ListScreen() {
   return (
     <ScreenContainer style={styles.container}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.primary }]}>{t('list.title')}</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('list.subtitle')}</Text>
-        <View style={styles.row}>
-          <Badge label={t('list.results', { count: spots.length })} variant="service" />
-          <Badge label={t('map.legendUnverified')} variant="warning" />
+        <View style={styles.filterHeaderRow}>
+          <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('map.filtersTitle')}</Text>
+          <Text style={[styles.filterMeta, { color: colors.textMuted }]}>rayon {LIST_RADIUS_KM} km</Text>
+          <Badge label={`${spots.length} résultats`} variant="service" />
         </View>
-
-        <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('map.filtersTitle')}</Text>
         <TypeFilterBar value={filterTypes} onChange={setFilterTypes} />
 
         <View style={styles.actionRow}>
@@ -166,15 +172,17 @@ export default function ListScreen() {
             disabled={loading}
             style={styles.refreshButton}
           />
-          <Button
-            label="+"
-            size="md"
-            variant="secondary"
-            onPress={() => router.push('/add-spot')}
-            disabled={loading}
-            accessibilityLabel={t('list.addSpot')}
-            style={styles.iconAddButton}
-          />
+          {isLoggedIn ? (
+            <Button
+              label="+"
+              size="md"
+              variant="secondary"
+              onPress={() => router.push('/add-spot')}
+              disabled={loading}
+              accessibilityLabel={t('list.addSpot')}
+              style={styles.iconAddButton}
+            />
+          ) : null}
         </View>
       </View>
 
@@ -194,18 +202,23 @@ export default function ListScreen() {
                 <SpotIcon type={toSpotIconType(item.type)} variant="icon" size={44} />
                 <View style={styles.itemTitleBlock}>
                   <Text style={[styles.itemName, { color: colors.textPrimary }]}>{item.name}</Text>
+                  <Text style={[styles.itemTypeLabel, { color: colors.textSecondary }]}>
+                    {getSpotTypeLabel(item.type)}
+                  </Text>
+                  <Text style={[styles.itemDistance, { color: colors.textMuted }]}>
+                    {item.distanceKm.toFixed(1)} km
+                  </Text>
                 </View>
                 <Badge label={`#${index + 1}`} variant="default" />
               </View>
-              <View style={styles.row}>
-                <Badge label={item.type} variant="service" />
-                <Badge label={`${item.distanceKm.toFixed(1)} km`} variant="parking" />
-                {!item.isVerified ? <Badge label={t('list.unverified')} variant="warning" /> : null}
-              </View>
+              {!item.isVerified ? (
+                <Badge label={t('list.unverified')} variant="warning" />
+              ) : null}
               <Button
                 label={t('list.seeDetail')}
                 size="sm"
                 variant="secondary"
+                style={styles.detailButton}
                 onPress={() =>
                   router.push({
                     pathname: '/spot/[id]',
@@ -239,12 +252,21 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginBottom: Spacing.lg,
   },
-  title: { ...Typography.title },
   subtitle: { ...Typography.subtitle },
+  filterHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+  },
   filterLabel: {
     ...Typography.caption,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
+    flex: 1,
+  },
+  filterMeta: {
+    ...Typography.caption,
   },
   actionRow: {
     flexDirection: 'row',
@@ -291,5 +313,16 @@ const styles = StyleSheet.create({
   itemName: {
     ...Typography.body,
     fontWeight: '600',
+  },
+  itemTypeLabel: {
+    ...Typography.caption,
+    marginTop: 2,
+  },
+  itemDistance: {
+    ...Typography.caption,
+    marginTop: 1,
+  },
+  detailButton: {
+    marginTop: Spacing.sm,
   },
 });

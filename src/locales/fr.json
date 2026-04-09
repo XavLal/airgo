@@ -75,14 +75,14 @@
     "addSpot": "Ajouter une aire"
   },
   "spotTypes": {
-    "AA": "Autoroute",
+    "AA": "Aire sur autoroute",
     "AC": "Camping",
-    "ACF": "Ferme",
-    "ACS": "Camping + service",
-    "AS": "Service",
-    "ASN": "Service + nuit",
-    "APN": "Parking nuit (toléré)",
-    "APCC": "Parking nuit (dédié)"
+    "ACF": "Accueil à la ferme",
+    "ACS": "Aire de service accessible sur camping",
+    "AS": "Aire de service",
+    "ASN": "Aire de service avec stationnement de nuit",
+    "APN": "Aire de parking tolérée la nuit pour camping-cars",
+    "APCC": "Aire de parking de nuit dédiée aux camping-cars"
   },
   "addSpot": {
     "title": "Ajouter une aire",

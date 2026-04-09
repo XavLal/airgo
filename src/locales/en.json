@@ -75,14 +75,14 @@
     "addSpot": "Add a spot"
   },
   "spotTypes": {
-    "AA": "Motorway",
+    "AA": "Motorway aire",
     "AC": "Campsite",
-    "ACF": "Farm stay",
-    "ACS": "Campsite + services",
+    "ACF": "Farm accommodation",
+    "ACS": "Service area on campsite",
     "AS": "Service area",
-    "ASN": "Services + overnight",
-    "APN": "Overnight parking (tolerated)",
-    "APCC": "Overnight parking (dedicated)"
+    "ASN": "Service area with overnight stay",
+    "APN": "Tolerated overnight parking",
+    "APCC": "Dedicated overnight parking"
   },
   "addSpot": {
     "title": "Add a spot",

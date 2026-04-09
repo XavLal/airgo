@@ -7,21 +7,7 @@ import SpotIcon, { toSpotIconType } from '../../src/components/SpotIcon';
 import { supabase } from '../../src/lib/supabase';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
 import { Input } from '../../src/components/ui';
-
-const SPOT_TYPE_LABELS: Record<string, string> = {
-  AA: 'Aire sur autoroute',
-  ACF: 'Accueil à la ferme',
-  AC: 'Camping',
-  ACS: 'Aire de service accessible sur camping',
-  APCC: 'Aire de parking de nuit dédiée aux camping-cars',
-  APN: 'Aire de parking tolérée la nuit pour camping-cars',
-  ASN: 'Aire de service avec stationnement de nuit',
-  AS: 'Aire de service',
-};
-
-function getSpotTypeLabel(typeCode: string): string {
-  return SPOT_TYPE_LABELS[typeCode] ?? typeCode;
-}
+import { getSpotTypeLabel } from '../../src/constants/spotTypes';
 
 type SpotDetail = {
   id: string;
@@ -453,7 +439,6 @@ export default function SpotDetailScreen() {
                 {spot.city ? <Badge label={spot.city} variant="default" /> : null}
                 {!spot.isVerified ? <Badge label="À valider" variant="warning" /> : null}
               </View>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>ID: {spot.id}</Text>
               <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                 Coordonnées : {spot.latitude?.toFixed(6) ?? 'N/A'}, {spot.longitude?.toFixed(6) ?? 'N/A'}
               </Text>
@@ -574,7 +559,7 @@ export default function SpotDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, paddingTop: 0 },
   scrollContent: {
     gap: Spacing.md,
     paddingBottom: Spacing.xl,
