@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pointInBounds, type MapBounds } from './mapRegionBounds';
 import type { NearbySpotRow } from './spotsNearbyRpc';
 
-const STORAGE_KEY = 'airgo.spots.offline.v1';
+const STORAGE_KEY = 'airgocc.spots.offline.v1';
 const MAX_ENTRIES = 20;
 /** Anciennes entrées sans rayon explicite : repli “proche du centre”. */
 const LEGACY_MAX_DISTANCE_KM = 85;

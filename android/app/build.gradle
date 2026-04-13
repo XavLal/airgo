@@ -93,9 +93,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.anonymous.airgo'
+    namespace 'com.anonymous.airgocc'
     defaultConfig {
-        applicationId 'com.anonymous.airgo'
+        applicationId 'com.anonymous.airgocc'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

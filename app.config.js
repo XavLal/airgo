@@ -15,7 +15,7 @@ module.exports = ({ config }) => {
     plugins.push(AndroidConfig.GoogleMapsApiKey.withGoogleMapsApiKey, IOSConfig.Maps.withMaps);
   } else {
     console.warn(
-      '[AirGo] EXPO_PUBLIC_GOOGLE_MAPS_API_KEY manquante ou vide : ajoute-la dans .env puis `npx expo prebuild --platform android` (ou iOS) avant un build natif, sinon Google Maps plante au lancement.',
+      '[AirGoCC] EXPO_PUBLIC_GOOGLE_MAPS_API_KEY manquante ou vide : ajoute-la dans .env puis `npx expo prebuild --platform android` (ou iOS) avant un build natif, sinon Google Maps plante au lancement.',
     );
   }
 

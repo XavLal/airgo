@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "AirGo",
-    "slug": "airgo",
+    "name": "AirGoCC",
+    "slug": "airgocc",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -14,11 +14,11 @@
     },
     "ios": {
       "icon": "./assets/icon.png",
-      "bundleIdentifier": "com.anonymous.airgo",
+      "bundleIdentifier": "com.anonymous.airgocc",
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "AirGo utilise votre position pour afficher les aires proches de vous.",
-        "NSPhotoLibraryUsageDescription": "AirGo a besoin de votre galerie pour ajouter des photos aux aires."
+        "NSLocationWhenInUseUsageDescription": "AirGoCC utilise votre position pour afficher les aires proches de vous.",
+        "NSPhotoLibraryUsageDescription": "AirGoCC a besoin de votre galerie pour ajouter des photos aux aires."
       }
     },
     "android": {
@@ -41,12 +41,12 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.WAKE_LOCK"
       ],
-      "package": "com.anonymous.airgo"
+      "package": "com.anonymous.airgocc"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "airgo",
+    "scheme": "airgocc",
     "plugins": [
       "expo-router",
       "expo-location",

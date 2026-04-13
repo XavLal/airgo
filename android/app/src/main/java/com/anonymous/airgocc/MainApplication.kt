@@ -1,4 +1,4 @@
-package com.anonymous.airgo
+package com.anonymous.airgocc
 
 import android.app.Application
 import android.content.res.Configuration

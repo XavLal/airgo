@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Génère android/airgo-release.keystore et un modèle keystore.properties.
+# Génère android/airgocc-release.keystore et un modèle keystore.properties.
 # Usage :
 #   ./scripts/create-android-release-keystore.sh 'MotDePasseSecret'
 # Puis éditer android/keystore.properties si le mot de passe de la clé diffère (ici identique).
@@ -14,29 +14,29 @@ if [[ -z "$PASS" ]]; then
   exit 1
 fi
 
-if [[ -f "$ANDROID_DIR/airgo-release.keystore" ]]; then
-  echo "Existe déjà : $ANDROID_DIR/airgo-release.keystore" >&2
+if [[ -f "$ANDROID_DIR/airgocc-release.keystore" ]]; then
+  echo "Existe déjà : $ANDROID_DIR/airgocc-release.keystore" >&2
   exit 1
 fi
 
 mkdir -p "$ANDROID_DIR"
 keytool -genkeypair -v \
   -storetype PKCS12 \
-  -keystore "$ANDROID_DIR/airgo-release.keystore" \
-  -alias airgo \
+  -keystore "$ANDROID_DIR/airgocc-release.keystore" \
+  -alias airgocc \
   -keyalg RSA \
   -keysize 2048 \
   -validity 10000 \
   -storepass "$PASS" \
   -keypass "$PASS" \
-  -dname "CN=AirGo, OU=Dev, O=AirGo, L=Paris, ST=IDF, C=FR"
+  -dname "CN=AirGoCC, OU=Dev, O=AirGoCC, L=Paris, ST=IDF, C=FR"
 
 cat > "$ANDROID_DIR/keystore.properties" <<EOF
-storeFile=airgo-release.keystore
-keyAlias=airgo
+storeFile=airgocc-release.keystore
+keyAlias=airgocc
 storePassword=$PASS
 keyPassword=$PASS
 EOF
 
 chmod 600 "$ANDROID_DIR/keystore.properties"
-echo "OK : $ANDROID_DIR/airgo-release.keystore + keystore.properties (gitignored)."
+echo "OK : $ANDROID_DIR/airgocc-release.keystore + keystore.properties (gitignored)."

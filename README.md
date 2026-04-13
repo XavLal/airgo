@@ -1,6 +1,6 @@
-# 🚐 AirGo - L'App Communautaire des Aires de Camping-Car
+# 🚐 AirGoCC - L'App Communautaire des Aires de Camping-Car
 
-AirGo est une application mobile développée en React Native / Expo qui permet aux voyageurs en van et camping-car de trouver, partager et valider les meilleures aires de services et de stationnement à travers l'Europe et le monde.
+AirGoCC est une application mobile développée en React Native / Expo qui permet aux voyageurs en van et camping-car de trouver, partager et valider les meilleures aires de services et de stationnement à travers l'Europe et le monde.
 
 Le projet se distingue par son approche communautaire : les ajouts d'aires par les utilisateurs sont soumis à un système de validation par les pairs pour garantir une base de données fiable et à jour.
 
@@ -35,8 +35,8 @@ Le projet se distingue par son approche communautaire : les ajouts d'aires par l
 
 1. **Cloner le repository :**
    ```bash
-   git clone [https://github.com/votre-nom/airgo.git](https://github.com/votre-nom/airgo.git)
-   cd airgo
+   git clone [https://github.com/votre-nom/airgocc.git](https://github.com/votre-nom/airgocc.git)
+   cd airgocc
    ```
 
 2. **Installer les dépendances :**

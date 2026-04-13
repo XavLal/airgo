@@ -9,7 +9,7 @@ import { MIGRATION_SQL, SPOTS_DB_NAME } from './schema';
  * au 1er lancement uniquement (forceOverwrite = false).
  * Les lancements suivants réutilisent la copie locale mise à jour via delta sync.
  */
-const BUNDLED_DB_ASSET: number = require('../../../assets/data/airgo-spots.db') as number;
+const BUNDLED_DB_ASSET: number = require('../../../assets/data/airgocc-spots.db') as number;
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 

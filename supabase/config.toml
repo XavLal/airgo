@@ -2,7 +2,7 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = "airgo"
+project_id = "airgocc"
 
 [api]
 enabled = true
@@ -227,7 +227,7 @@ otp_expiry = 3600
 # sender_name = "Admin"
 
 [auth.email.template.magic_link]
-subject = "Votre code de connexion AirGo"
+subject = "Votre code de connexion AirGoCC"
 content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize email template

@@ -1,5 +1,5 @@
 -- Delta sync + soft delete (table public.spots)
--- Appliqué sur le projet Supabase AirGo ; à rejouer via `supabase db push` / link
+-- Appliqué sur le projet Supabase AirGoCC ; à rejouer via `supabase db push` / link
 
 -- 1. updated_at (backfill depuis created_at)
 ALTER TABLE public.spots

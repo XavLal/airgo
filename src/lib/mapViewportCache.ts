@@ -3,7 +3,7 @@ import type { Region } from 'react-native-maps';
 import { haversineKm, regionToBounds } from './mapRegionBounds';
 import type { NearbySpotRow } from './spotsNearbyRpc';
 
-const STORAGE_KEY = 'airgo.map.viewport.v1';
+const STORAGE_KEY = 'airgocc.map.viewport.v1';
 const TTL_MS = 48 * 60 * 60 * 1000;
 const MAX_ENTRIES = 16;
 const COVERAGE_SLACK = 1.02;

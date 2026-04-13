@@ -1,6 +1,6 @@
 /** Schéma SQLite : stockage local des aires + R-Tree (lng/lat sur minX/maxX, minY/maxY). */
 
-export const SPOTS_DB_NAME = 'airgo-spots.db';
+export const SPOTS_DB_NAME = 'airgocc-spots.db';
 
 export const MIGRATION_SQL = `
 CREATE TABLE IF NOT EXISTS sync_meta (

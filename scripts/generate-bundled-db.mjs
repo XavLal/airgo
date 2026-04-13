@@ -8,7 +8,7 @@
  *
  * Le script :
  *   1. Télécharge tous les spots depuis Supabase (paginé, exclut soft-deleted)
- *   2. Crée assets/data/airgo-spots.db avec le même schéma que le runtime
+ *   2. Crée assets/data/airgocc-spots.db avec le même schéma que le runtime
  *   3. Insère en bulk (~24k rows en < 1s)
  *   4. Construit les indexes et le R-Tree
  *   5. Pose les sync_meta (last_delta_sync_at = now)
@@ -24,7 +24,7 @@ import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUTPUT_PATH = resolve(__dirname, '../assets/data/airgo-spots.db');
+const OUTPUT_PATH = resolve(__dirname, '../assets/data/airgocc-spots.db');
 
 const PAGE_SIZE = 1000;
 
@@ -244,7 +244,7 @@ function createDatabase(spots) {
 
 async function main() {
   console.log('═══════════════════════════════════════════');
-  console.log('  Génération du SQLite bundlé pour AirGo');
+  console.log('  Génération du SQLite bundlé pour AirGoCC');
   console.log('═══════════════════════════════════════════\n');
 
   const spots = await fetchAllSpots();

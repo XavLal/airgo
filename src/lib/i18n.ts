@@ -6,7 +6,7 @@ import { initReactI18next } from 'react-i18next';
 import en from '../locales/en.json';
 import fr from '../locales/fr.json';
 
-const STORAGE_KEY = 'airgo.locale';
+const STORAGE_KEY = 'airgocc.locale';
 
 /** Langues supportées aujourd’hui ; ajouter une clé ici + fichier JSON pour étendre. */
 export const SUPPORTED_LANGUAGES = ['fr', 'en'] as const;
