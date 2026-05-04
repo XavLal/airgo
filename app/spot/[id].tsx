@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 import { Badge, Button, Card, ScreenContainer } from '../../src/components/ui';
 import SpotIcon, { toSpotIconType } from '../../src/components/SpotIcon';
 import { supabase } from '../../src/lib/supabase';
+import { extractLatLng, isSoftDeletedRow } from '../../src/lib/localDb/spotSync';
 import { Radius, Spacing, Typography, useTheme } from '../../src/theme';
 import { Input } from '../../src/components/ui';
 import { getSpotTypeLabel } from '../../src/constants/spotTypes';
@@ -14,9 +16,12 @@ type SpotDetail = {
   name: string;
   type: string;
   city: string | null;
+  postalCode: string | null;
+  description: string | null;
   latitude: number | null;
   longitude: number | null;
   isVerified: boolean;
+  createdBy: string | null;
 };
 
 type SpotReview = {
@@ -24,6 +29,7 @@ type SpotReview = {
   rating: number | null;
   comment: string | null;
   createdAt: string | null;
+  userPseudo: string | null;
 };
 
 type SpotPhoto = {
@@ -38,15 +44,10 @@ interface SpotGoogleMedia {
 }
 
 export default function SpotDetailScreen() {
+  const { t, i18n } = useTranslation();
+  const router = useRouter();
   const { colors } = useTheme();
-  const { id, name, type, lat, lng, verified } = useLocalSearchParams<{
-    id: string;
-    name?: string;
-    type?: string;
-    lat?: string;
-    lng?: string;
-    verified?: string;
-  }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const [loading, setLoading] = useState(false);
   const [spot, setSpot] = useState<SpotDetail | null>(null);
   const [loadingRelated, setLoadingRelated] = useState(false);
@@ -58,15 +59,86 @@ export default function SpotDetailScreen() {
   const [reviewRating, setReviewRating] = useState('5');
   const [reviewComment, setReviewComment] = useState('');
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [myReviewId, setMyReviewId] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [spotDeleting, setSpotDeleting] = useState(false);
+
+  const hydrateReviewsWithPseudo = async (reviewRows: Array<Record<string, unknown>>): Promise<SpotReview[]> => {
+    const baseParsed = reviewRows.map((row) => {
+      const reviewId = row.id != null ? String(row.id) : String(Math.random());
+
+      const ratingValue = row.rating;
+      const rating = ratingValue != null ? Number(ratingValue) : null;
+
+      const commentValue = row.comment;
+      const comment = commentValue != null ? String(commentValue) : null;
+
+      const createdAtValue = row.created_at;
+      const createdAt = createdAtValue != null ? String(createdAtValue) : null;
+
+      const userIdValue = row.user_id ?? row.created_by;
+      const userId = userIdValue != null ? String(userIdValue) : null;
+
+      return {
+        id: reviewId,
+        rating: rating != null && !Number.isNaN(rating) ? rating : null,
+        comment,
+        createdAt,
+        userId,
+      };
+    });
+
+    const userIds = Array.from(
+      new Set(
+        baseParsed
+          .map((r) => r.userId)
+          .filter((uid): uid is string => uid != null && uid.length > 0),
+      ),
+    );
+    if (userIds.length === 0) {
+      return baseParsed.map((r) => ({ ...r, userPseudo: null }));
+    }
+
+    const { data: profilesRes } = await supabase.from('profiles').select('id, pseudo').in('id', userIds);
+    const pseudoById = new Map<string, string>();
+    for (const p of (profilesRes ?? []) as Array<Record<string, unknown>>) {
+      const idValue = p.id;
+      const pseudoValue = p.pseudo;
+      if (idValue != null && pseudoValue != null) {
+        pseudoById.set(String(idValue), String(pseudoValue));
+      }
+    }
+
+    return baseParsed.map((r) => ({
+      id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt,
+      userPseudo: r.userId != null ? (pseudoById.get(r.userId) ?? null) : null,
+    }));
+  };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setIsLoggedIn(!!data.session?.user);
-    });
+    const refreshAuthUser = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) {
+        setIsLoggedIn(false);
+        setCurrentUserId(null);
+        return;
+      }
+      setIsLoggedIn(true);
+      setCurrentUserId(data.user.id);
+    };
+
+    void refreshAuthUser();
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsLoggedIn(!!session?.user);
+      setCurrentUserId(session?.user?.id ?? null);
+      if (session?.user) {
+        void refreshAuthUser();
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -74,52 +146,51 @@ export default function SpotDetailScreen() {
   useEffect(() => {
     if (!id) return;
 
-    const latitude = lat ? Number(lat) : null;
-    const longitude = lng ? Number(lng) : null;
-    const hasRoutePayload = !!name || !!type || (!Number.isNaN(latitude) && !Number.isNaN(longitude));
-
-    if (hasRoutePayload) {
-      setSpot({
-        id,
-        name: name ?? 'Aire',
-        type: type ?? 'OTHER',
-        city: null,
-        latitude: Number.isNaN(latitude) ? null : latitude,
-        longitude: Number.isNaN(longitude) ? null : longitude,
-        isVerified: verified === '0' ? false : true,
-      });
-      return;
-    }
-
     setLoading(true);
     (async () => {
       try {
         const { data, error } = await supabase
           .from('spots')
-          .select('id, name, type, city')
+          .select('id, name, type, city, postal_code, description, is_verified, created_by, location, deleted_at')
           .eq('id', id)
           .maybeSingle();
 
         if (error) {
-          Alert.alert('Fiche aire', `Impossible de charger les details: ${error.message}`);
+          Alert.alert(t('spotDetail.loadErrorTitle'), error.message);
+          setSpot(null);
           return;
         }
 
-        if (!data) return;
+        if (!data) {
+          setSpot(null);
+          return;
+        }
+
+        const row = data as Record<string, unknown>;
+        if (isSoftDeletedRow(row)) {
+          setSpot(null);
+          Alert.alert(t('spotDetail.unavailableTitle'), t('spotDetail.unavailableMessage'));
+          return;
+        }
+
+        const coords = extractLatLng(row);
         setSpot({
           id: String(data.id),
           name: String(data.name ?? 'Aire'),
           type: String(data.type ?? 'OTHER'),
           city: data.city ?? null,
-          latitude: null,
-          longitude: null,
-          isVerified: true,
+          postalCode: data.postal_code != null ? String(data.postal_code) : null,
+          description: data.description != null ? String(data.description) : null,
+          latitude: coords?.lat ?? null,
+          longitude: coords?.lng ?? null,
+          isVerified: Boolean(data.is_verified),
+          createdBy: data.created_by != null ? String(data.created_by) : null,
         });
       } finally {
         setLoading(false);
       }
     })();
-  }, [id, lat, lng, name, type, verified]);
+  }, [id, t]);
 
   useEffect(() => {
     if (!id) return;
@@ -133,14 +204,10 @@ export default function SpotDetailScreen() {
         ]);
 
         if (reviewsRes.error) {
-          Alert.alert('Avis', `Impossible de charger les avis: ${reviewsRes.error.message}`);
+          Alert.alert(t('spotDetail.reviewsLoadErrorTitle'), t('spotDetail.reviewsLoadErrorMessage', { message: reviewsRes.error.message }));
         } else {
-          const parsedReviews = (reviewsRes.data ?? []).map((row: Record<string, unknown>) => ({
-            id: String(row.id ?? Math.random()),
-            rating: row.rating != null ? Number(row.rating) : row.note != null ? Number(row.note) : null,
-            comment: row.comment != null ? String(row.comment) : row.content != null ? String(row.content) : null,
-            createdAt: row.created_at != null ? String(row.created_at) : null,
-          }));
+          const reviewRows = (reviewsRes.data ?? []) as Array<Record<string, unknown>>;
+          const parsedReviews = await hydrateReviewsWithPseudo(reviewRows);
           setReviews(parsedReviews);
         }
 
@@ -163,7 +230,47 @@ export default function SpotDetailScreen() {
         setLoadingRelated(false);
       }
     })();
-  }, [id]);
+  }, [id, t]);
+
+  // Pré-remplit le formulaire avec l'avis actuel de l'utilisateur connecté (si présent).
+  useEffect(() => {
+    if (!id) return;
+    if (!isLoggedIn) return;
+    if (!currentUserId) return;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('id, rating, comment')
+        .eq('spot_id', id)
+        .eq('user_id', currentUserId)
+        .maybeSingle();
+
+      if (error) {
+        // Non bloquant : l'affichage des avis reste géré ailleurs.
+        console.error('[SpotDetailScreen] loadMyReview', error);
+        return;
+      }
+
+      if (!data) {
+        setMyReviewId(null);
+        return;
+      }
+
+      const ratingValue = data.rating;
+      const rating = ratingValue != null ? Number(ratingValue) : null;
+      setMyReviewId(String(data.id));
+      setReviewRating(rating != null && !Number.isNaN(rating) ? String(rating) : '5');
+      setReviewComment(data.comment != null ? String(data.comment) : '');
+    })();
+  }, [id, isLoggedIn, currentUserId]);
+
+  useEffect(() => {
+    if (isLoggedIn) return;
+    setMyReviewId(null);
+    setReviewRating('5');
+    setReviewComment('');
+  }, [isLoggedIn]);
 
   useEffect(() => {
     if (!id) return;
@@ -221,12 +328,8 @@ export default function SpotDetailScreen() {
       supabase.from('photos').select('*').eq('spot_id', id).order('created_at', { ascending: false }).limit(20),
     ]);
     if (!reviewsRes.error) {
-      const parsedReviews = (reviewsRes.data ?? []).map((row: Record<string, unknown>) => ({
-        id: String(row.id ?? Math.random()),
-        rating: row.rating != null ? Number(row.rating) : row.note != null ? Number(row.note) : null,
-        comment: row.comment != null ? String(row.comment) : row.content != null ? String(row.content) : null,
-        createdAt: row.created_at != null ? String(row.created_at) : null,
-      }));
+      const reviewRows = (reviewsRes.data ?? []) as Array<Record<string, unknown>>;
+      const parsedReviews = await hydrateReviewsWithPseudo(reviewRows);
       setReviews(parsedReviews);
     }
     if (!photosRes.error) {
@@ -268,8 +371,60 @@ export default function SpotDetailScreen() {
     }
   };
 
+  const normalizedCurrentUserId = currentUserId?.trim().toLowerCase() ?? null;
+  const normalizedCreatedBy = spot?.createdBy?.trim().toLowerCase() ?? null;
+  const isOwner = normalizedCurrentUserId != null && normalizedCreatedBy != null && normalizedCreatedBy === normalizedCurrentUserId;
+  const canManagePendingSpot = isOwner && spot != null && !spot.isVerified;
+  const canVotePendingSpot = isLoggedIn && spot != null && !spot.isVerified && !isOwner;
+
+  const deleteSpot = async () => {
+    if (!id) return;
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth.user?.id;
+    if (!uid) return;
+
+    setSpotDeleting(true);
+    if (spot?.isVerified) {
+      setSpotDeleting(false);
+      Alert.alert(t('spotDetail.deleteErrorTitle'), t('spotDetail.unavailableMessage'));
+      return;
+    }
+
+    const { error } = await supabase
+      .from('spots')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('created_by', uid)
+      .eq('is_verified', false);
+    setSpotDeleting(false);
+
+    if (error) {
+      Alert.alert(t('spotDetail.deleteErrorTitle'), error.message);
+      return;
+    }
+    Alert.alert(t('spotDetail.deletedTitle'), t('spotDetail.deletedMessage'));
+    router.back();
+  };
+
+  const confirmDeleteSpot = () => {
+    Alert.alert(t('spotDetail.deleteConfirmTitle'), t('spotDetail.deleteConfirmMessage'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('spotDetail.delete'),
+        style: 'destructive',
+        onPress: () => {
+          void deleteSpot();
+        },
+      },
+    ]);
+  };
+
   const submitValidationVote = async () => {
     if (!id) return;
+    if (isOwner) {
+      Alert.alert('Vote impossible', "Vous ne pouvez pas valider une aire que vous avez créée.");
+      return;
+    }
     setVoteLoading(true);
     const { data: auth } = await supabase.auth.getUser();
     const userId = auth.user?.id;
@@ -306,40 +461,111 @@ export default function SpotDetailScreen() {
     if (!id) return;
     const rating = Number(reviewRating);
     if (Number.isNaN(rating) || rating < 1 || rating > 5) {
-      Alert.alert('Note invalide', 'La note doit etre comprise entre 1 et 5.');
-      return;
-    }
-    setReviewLoading(true);
-    const { data: auth } = await supabase.auth.getUser();
-    const userId = auth.user?.id;
-    if (!userId) {
-      setReviewLoading(false);
-      Alert.alert('Connexion requise', 'Connecte-toi pour laisser un avis.');
+      Alert.alert(t('spotDetail.reviewInvalidRatingTitle'), t('spotDetail.reviewInvalidRatingMessage'));
       return;
     }
 
-    const payloads = [
-      { spot_id: id, user_id: userId, rating, comment: reviewComment.trim() || null },
-      { spot_id: id, created_by: userId, note: rating, content: reviewComment.trim() || null },
-    ];
-    let success = false;
-    let lastError = '';
-    for (const payload of payloads) {
-      const { error } = await supabase.from('reviews').insert(payload);
-      if (!error) {
-        success = true;
-        break;
+    const trimmedComment = reviewComment.trim() || null;
+    setReviewLoading(true);
+    try {
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
+      if (authErr || !userId) {
+        Alert.alert(t('spotDetail.reviewLoginTitle'), t('spotDetail.reviewLoginMessage'));
+        return;
       }
-      lastError = error.message;
+
+      // Une seule review par utilisateur et par aire (contrainte DB) :
+      // - si elle existe : update
+      // - sinon : insert
+      const { data: existing, error: existingErr } = await supabase
+        .from('reviews')
+        .select('id')
+        .eq('spot_id', id)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (existingErr) {
+        Alert.alert(t('spotDetail.reviewErrorTitle'), existingErr.message);
+        return;
+      }
+
+      if (existing) {
+        const { error: updateErr } = await supabase
+          .from('reviews')
+          .update({ rating, comment: trimmedComment })
+          .eq('id', String(existing.id))
+          .eq('user_id', userId);
+        if (updateErr) {
+          Alert.alert(t('spotDetail.reviewErrorTitle'), updateErr.message);
+          return;
+        }
+        setMyReviewId(String(existing.id));
+        Alert.alert(t('spotDetail.reviewThanksTitle'), t('spotDetail.reviewThanksUpdatedMessage'));
+        await refreshRelated();
+        return;
+      }
+
+      const { data: inserted, error: insertErr } = await supabase
+        .from('reviews')
+        .insert({
+          spot_id: id,
+          user_id: userId,
+          rating,
+          comment: trimmedComment,
+        })
+        .select('id')
+        .single();
+
+      if (insertErr) {
+        // Contrainte unique (course entre deux envois) : basculer en mise à jour.
+        if (insertErr.code === '23505') {
+          const { data: raced, error: racedErr } = await supabase
+            .from('reviews')
+            .select('id')
+            .eq('spot_id', id)
+            .eq('user_id', userId)
+            .maybeSingle();
+          if (racedErr || !raced) {
+            Alert.alert(t('spotDetail.reviewErrorTitle'), insertErr.message);
+            return;
+          }
+          const { error: updateAfterRaceErr } = await supabase
+            .from('reviews')
+            .update({ rating, comment: trimmedComment })
+            .eq('id', String(raced.id))
+            .eq('user_id', userId);
+          if (updateAfterRaceErr) {
+            Alert.alert(t('spotDetail.reviewErrorTitle'), updateAfterRaceErr.message);
+            return;
+          }
+          setMyReviewId(String(raced.id));
+          Alert.alert(t('spotDetail.reviewThanksTitle'), t('spotDetail.reviewThanksUpdatedMessage'));
+          await refreshRelated();
+          return;
+        }
+        Alert.alert(t('spotDetail.reviewErrorTitle'), insertErr.message);
+        return;
+      }
+
+      if (inserted?.id) {
+        setMyReviewId(String(inserted.id));
+      } else {
+        const { data: refetched } = await supabase
+          .from('reviews')
+          .select('id')
+          .eq('spot_id', id)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (refetched?.id) {
+          setMyReviewId(String(refetched.id));
+        }
+      }
+      Alert.alert(t('spotDetail.reviewThanksTitle'), t('spotDetail.reviewThanksCreatedMessage'));
+      await refreshRelated();
+    } finally {
+      setReviewLoading(false);
     }
-    setReviewLoading(false);
-    if (!success) {
-      Alert.alert('Avis impossible', lastError || 'Erreur inconnue.');
-      return;
-    }
-    setReviewComment('');
-    setReviewRating('5');
-    await refreshRelated();
   };
 
   const uploadPhoto = async () => {
@@ -460,7 +686,32 @@ export default function SpotDetailScreen() {
                 <Button label="S'y rendre (Google Maps)" onPress={openGoogleMaps} />
                 <Button label="S'y rendre (Waze)" variant="secondary" onPress={openWaze} />
               </View>
-              {!spot.isVerified ? (
+
+              {spot.description ? (
+                <View style={styles.descriptionWrap}>
+                  <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t('addSpot.description')}</Text>
+                  <Text style={[styles.descriptionText, { color: colors.textSecondary }]}>
+                    {spot.description}
+                  </Text>
+                </View>
+              ) : null}
+
+              {canManagePendingSpot ? (
+                <View style={styles.row}>
+                  <Button
+                    label={t('spotDetail.edit')}
+                    variant="secondary"
+                    onPress={() => router.push({ pathname: '/edit-spot/[id]', params: { id: spot.id } })}
+                  />
+                  <Button
+                    label={t('spotDetail.delete')}
+                    variant="secondary"
+                    onPress={confirmDeleteSpot}
+                    disabled={spotDeleting}
+                  />
+                </View>
+              ) : null}
+              {canVotePendingSpot ? (
                 <Button
                   label={voteLoading ? 'Validation...' : "Je valide l'existence de cette aire"}
                   onPress={submitValidationVote}
@@ -520,20 +771,29 @@ export default function SpotDetailScreen() {
 
         {/* ── Avis ── */}
         <Card style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Avis</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t('spotDetail.reviewsTitle')}</Text>
 
           {/* Formulaire — grisé si non connecté */}
           <View style={!isLoggedIn ? styles.lockedSection : undefined}>
             {!isLoggedIn ? (
-              <Text style={[styles.lockedHint, { color: colors.textMuted }]}>
-                Connectez-vous pour laisser un avis.
-              </Text>
+              <Text style={[styles.lockedHint, { color: colors.textMuted }]}>{t('spotDetail.reviewLoginHint')}</Text>
             ) : null}
             <View pointerEvents={isLoggedIn ? 'auto' : 'none'}>
-              <Input label="Note (1-5)" value={reviewRating} onChangeText={setReviewRating} keyboardType="number-pad" />
-              <Input label="Commentaire" value={reviewComment} onChangeText={setReviewComment} />
+              <Input
+                label={t('spotDetail.reviewRatingLabel')}
+                value={reviewRating}
+                onChangeText={setReviewRating}
+                keyboardType="number-pad"
+              />
+              <Input label={t('spotDetail.reviewCommentLabel')} value={reviewComment} onChangeText={setReviewComment} />
               <Button
-                label={reviewLoading ? 'Publication...' : 'Publier mon avis'}
+                label={
+                  reviewLoading
+                    ? t('spotDetail.reviewSubmitting')
+                    : myReviewId
+                      ? t('spotDetail.reviewSubmitUpdate')
+                      : t('spotDetail.reviewSubmitCreate')
+                }
                 onPress={submitReview}
                 disabled={reviewLoading}
               />
@@ -544,23 +804,28 @@ export default function SpotDetailScreen() {
           {loadingRelated ? (
             <View style={styles.loading}>
               <ActivityIndicator color={colors.primary} />
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Chargement des avis...</Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('spotDetail.reviewsLoading')}</Text>
             </View>
           ) : reviews.length === 0 ? (
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aucun avis pour le moment.</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('spotDetail.reviewsEmpty')}</Text>
           ) : (
             reviews.map((review) => (
               <View key={review.id} style={[styles.reviewItem, { borderColor: colors.border }]}>
+                <Text style={[styles.reviewAuthor, { color: colors.textPrimary }]}>
+                  {review.userPseudo ?? t('spotDetail.reviewPseudoUnknown')}
+                </Text>
                 <View style={styles.row}>
                   <Badge label={review.rating != null ? `${review.rating}/5` : 'N/A'} variant="parking" />
                   {review.createdAt ? (
                     <Text style={[styles.meta, { color: colors.textMuted }]}>
-                      {new Date(review.createdAt).toLocaleDateString('fr-FR')}
+                      {new Date(review.createdAt).toLocaleDateString(i18n.language === 'en' ? 'en-GB' : 'fr-FR')}
                     </Text>
                   ) : null}
                 </View>
                 <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                  {review.comment || 'Avis sans commentaire.'}
+                  {review.comment != null && review.comment.trim() !== ''
+                    ? review.comment
+                    : t('spotDetail.reviewNoComment')}
                 </Text>
               </View>
             ))
@@ -618,6 +883,10 @@ const styles = StyleSheet.create({
   meta: {
     ...Typography.caption,
   },
+  reviewAuthor: {
+    ...Typography.body,
+    fontWeight: '600',
+  },
   photoRow: {
     gap: Spacing.sm,
     paddingRight: Spacing.sm,
@@ -644,5 +913,12 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     fontStyle: 'italic',
     marginBottom: Spacing.xs,
+  },
+  descriptionWrap: {
+    gap: Spacing.xs,
+    paddingTop: Spacing.sm,
+  },
+  descriptionText: {
+    ...Typography.subtitle,
   },
 });

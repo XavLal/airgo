@@ -12,7 +12,12 @@ import { countLocalSpots } from '../../src/lib/localDb/client';
 import { querySpotsInViewport, VIEWPORT_QUERY_HARD_CAP } from '../../src/lib/localDb/spotQueries';
 import { onSpotsLocalDbChanged } from '../../src/lib/localDb/spotSyncEvents';
 import { runDeltaSpotSyncFromSupabase } from '../../src/lib/localDb/spotSync';
-import { buildClusterIndex, spotsToFeatures, zoomFromRegion } from '../../src/lib/mapClusterHelpers';
+import {
+  buildClusterIndex,
+  collapseCoincidentSpotsForMap,
+  spotsToFeatures,
+  zoomFromRegion,
+} from '../../src/lib/mapClusterHelpers';
 import type { Feature, Point } from 'geojson';
 import { regionToBounds } from '../../src/lib/mapRegionBounds';
 import { getIsOnline } from '../../src/lib/networkStatus';
@@ -256,12 +261,13 @@ export default function MapScreen() {
         const rows = await querySpotsInViewport(bounds, filterTypes, VIEWPORT_QUERY_HARD_CAP);
         if (gen !== viewportGenRef.current) return;
 
-        setViewportRowCount(rows.length);
-        spotsRef.current = rows.map((r) =>
+        const visibleRows = collapseCoincidentSpotsForMap(rows);
+        setViewportRowCount(visibleRows.length);
+        spotsRef.current = visibleRows.map((r) =>
           packToMarker(r.spotId, r.name, r.type, r.lat, r.lng, Boolean(r.isVerified)),
         );
 
-        const index = buildClusterIndex(spotsToFeatures(rows));
+        const index = buildClusterIndex(spotsToFeatures(visibleRows));
         clusterIndexRef.current = index;
         const bbox: [number, number, number, number] = [bounds.west, bounds.south, bounds.east, bounds.north];
         setClusters(index.getClusters(bbox, z) as Feature<Point>[]);

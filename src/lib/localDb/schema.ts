@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS spots_pack (
   postal_code TEXT,
   description TEXT,
   created_by TEXT,
+  created_at TEXT,
   updated_at TEXT NOT NULL DEFAULT ''
 );
 

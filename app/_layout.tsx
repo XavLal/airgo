@@ -33,6 +33,7 @@ function RootNavigator() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="add-spot" options={{ headerShown: true, title: '' }} />
+        <Stack.Screen name="edit-spot/[id]" options={{ headerShown: true, title: '' }} />
         <Stack.Screen name="spot/[id]" options={{ headerShown: true, title: '' }} />
       </Stack>
     </>

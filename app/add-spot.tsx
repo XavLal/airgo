@@ -96,6 +96,11 @@ export default function AddSpotScreen() {
     setLoading(true);
     const { data: auth } = await supabase.auth.getUser();
     const userId = auth.user?.id ?? null;
+    if (!userId) {
+      setLoading(false);
+      Alert.alert('Connexion requise', 'Connecte-toi pour ajouter une aire.');
+      return;
+    }
 
     const { error } = await supabase.from('spots').insert({
       name: generatedName,
@@ -110,7 +115,12 @@ export default function AddSpotScreen() {
 
     setLoading(false);
     if (error) {
-      Alert.alert(t('addSpot.errorTitle'), error.message);
+      const msg = error.message ?? '';
+      if (msg.includes('SPOT_TOO_CLOSE')) {
+        Alert.alert(t('addSpot.errorTitle'), t('addSpot.tooCloseMessage'));
+        return;
+      }
+      Alert.alert(t('addSpot.errorTitle'), msg);
       return;
     }
 

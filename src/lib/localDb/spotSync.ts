@@ -84,6 +84,7 @@ function rowToPack(row: Record<string, unknown>): PackInsert | null {
     postalCode: row.postal_code != null ? String(row.postal_code) : null,
     description: row.description != null ? String(row.description) : null,
     createdBy: row.created_by != null ? String(row.created_by) : null,
+    createdAt: row.created_at != null ? String(row.created_at) : null,
     updatedAt:
       row.updated_at != null
         ? String(row.updated_at)
@@ -101,8 +102,8 @@ async function upsertPackRowInner(db: SQLite.SQLiteDatabase, rtree: boolean, pac
   }
 
   const ins = await db.runAsync(
-    `INSERT INTO spots_pack (spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO spots_pack (spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       pack.spotId,
       pack.name,
@@ -114,6 +115,7 @@ async function upsertPackRowInner(db: SQLite.SQLiteDatabase, rtree: boolean, pac
       pack.postalCode,
       pack.description,
       pack.createdBy,
+      pack.createdAt ?? pack.updatedAt,
       pack.updatedAt,
     ],
   );

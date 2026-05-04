@@ -145,6 +145,7 @@ async function fetchAllSpots() {
         postalCode: row.postal_code ?? null,
         description: row.description ?? null,
         createdBy: row.created_by ?? null,
+        createdAt: row.created_at != null ? String(row.created_at) : null,
         updatedAt: String(row.updated_at ?? row.created_at ?? new Date().toISOString()),
       });
     }
@@ -187,6 +188,7 @@ function createDatabase(spots) {
       postal_code TEXT,
       description TEXT,
       created_by TEXT,
+      created_at TEXT,
       updated_at TEXT NOT NULL DEFAULT ''
     );
 
@@ -205,8 +207,8 @@ function createDatabase(spots) {
   console.log('📦 Insertion en bulk...');
 
   const insertPack = db.prepare(`
-    INSERT INTO spots_pack (spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO spots_pack (spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertRtree = db.prepare(`
@@ -218,7 +220,7 @@ function createDatabase(spots) {
     for (const s of rows) {
       const result = insertPack.run(
         s.spotId, s.name, s.type, s.lat, s.lng, s.isVerified,
-        s.city, s.postalCode, s.description, s.createdBy, s.updatedAt,
+        s.city, s.postalCode, s.description, s.createdBy, s.createdAt ?? s.updatedAt, s.updatedAt,
       );
       insertRtree.run(result.lastInsertRowid, s.lng, s.lng, s.lat, s.lat);
     }

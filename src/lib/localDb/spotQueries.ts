@@ -22,6 +22,7 @@ type RawSpot = {
   postal_code: string | null;
   description: string | null;
   created_by: string | null;
+  created_at: string | null;
   updated_at: string;
 };
 
@@ -37,6 +38,7 @@ function toRow(r: RawSpot): SpotPackRow {
     postalCode: r.postal_code,
     description: r.description,
     createdBy: r.created_by,
+    createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
 }
@@ -74,7 +76,7 @@ export async function querySpotsInViewport(
     if (useRtree) {
       raw =
         (await db.getAllAsync<RawSpot>(
-          `SELECT spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, updated_at
+          `SELECT spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, created_at, updated_at
          FROM spots_pack p
          JOIN spots_rtree r ON p.pk = r.id
          WHERE r.minX <= ? AND r.maxX >= ? AND r.minY <= ? AND r.maxY >= ?
@@ -84,7 +86,7 @@ export async function querySpotsInViewport(
     } else {
       raw =
         (await db.getAllAsync<RawSpot>(
-          `SELECT spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, updated_at
+          `SELECT spot_id, name, type, lat, lng, is_verified, city, postal_code, description, created_by, created_at, updated_at
          FROM spots_pack p
          WHERE p.lng >= ? AND p.lng <= ? AND p.lat >= ? AND p.lat <= ?
          ${typeSql}${orderAndLimit}`,

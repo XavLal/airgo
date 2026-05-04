@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { Session, User } from '@supabase/supabase-js';
 import { Badge, Button, Card, Input, ScreenContainer, Separator } from '../../src/components/ui';
@@ -203,7 +212,17 @@ export default function ProfileScreen() {
 
   return (
     <ScreenContainer style={styles.container}>
-      <Card style={[styles.placeholder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+      >
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <Card style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.primary }]}>{t('profile.title')}</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('profile.subtitle')}</Text>
 
@@ -318,16 +337,21 @@ export default function ProfileScreen() {
           <Button label={t('language.en')} size="sm" variant="secondary" onPress={() => switchLanguage('en')} />
         </View>
         <Text style={[styles.meta, { color: colors.textMuted }]}>{t('language.hint')}</Text>
-      </Card>
+          </Card>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  placeholder: {
-    flex: 1,
-    justifyContent: 'center',
+  flex: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: Spacing.xxl * 4,
+  },
+  card: {
     gap: Spacing.sm,
     margin: Spacing.lg,
     padding: Spacing.xl,

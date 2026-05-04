@@ -9,5 +9,6 @@ export interface PackInsert {
   postalCode: string | null;
   description: string | null;
   createdBy: string | null;
+  createdAt: string | null;
   updatedAt: string;
 }

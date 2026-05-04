@@ -3,6 +3,14 @@ import { importDatabaseFromAssetAsync } from 'expo-sqlite';
 import { Platform } from 'react-native';
 import { MIGRATION_SQL, SPOTS_DB_NAME } from './schema';
 
+async function ensureSpotsPackCreatedAtColumn(db: SQLite.SQLiteDatabase): Promise<void> {
+  const cols =
+    (await db.getAllAsync<{ name: string }>(`PRAGMA table_info(spots_pack)`)) ?? [];
+  if (cols.some((c) => c.name === 'created_at')) return;
+  await db.execAsync('ALTER TABLE spots_pack ADD COLUMN created_at TEXT');
+  await db.runAsync(`UPDATE spots_pack SET created_at = updated_at WHERE created_at IS NULL OR created_at = ''`);
+}
+
 /**
  * Asset bundlé : le .db pré-rempli généré par `npm run generate-db`.
  * `importDatabaseFromAssetAsync` copie ce fichier dans le répertoire SQLite
@@ -97,6 +105,8 @@ async function openAndMigrate(): Promise<SQLite.SQLiteDatabase> {
   const db = await SQLite.openDatabaseAsync(SPOTS_DB_NAME);
 
   await db.execAsync(MIGRATION_SQL);
+
+  await ensureSpotsPackCreatedAtColumn(db);
 
   try {
     await db.execAsync(RTREE_SQL);
