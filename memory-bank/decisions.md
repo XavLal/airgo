@@ -1,5 +1,15 @@
 # Décisions techniques
 
+## 2026-10-12 Plusieurs lectures base par jour
+
+**Contexte :** Une lecture quotidienne de `spots` a renvoyé HTTP 200 les 8, 9, 10 et 11 octobre. Le projet a quand même été mis en pause. La doc Supabase demande quelques requêtes base par jour sur la semaine écoulée. Un projet en pause ne publie plus son DNS.
+
+**Décision :** Garder le plan gratuit. Le workflow envoie trois requêtes réelles (`spots` deux fois, RPC `spots_nearby`) à 05:00, 11:00, 17:00 et 23:00 UTC, avec trois tentatives en cas d'échec.
+
+**Pourquoi :** Reste dans le choix d'éviter un hébergement payant, tout en dépassant le seuil décrit par Supabase.
+
+**Alternatives écartées :** Inchangées : Pro, VPS, autre backend.
+
 ## 2026-10-08 Rester sur Supabase gratuit avec un ping quotidien
 
 **Contexte :** Le projet Supabase gratuit se met en pause lorsqu'il n'y a pas assez d'appels vers la base. L'app dépend de Postgres/PostGIS, de l'auth OTP, du Storage et du client `supabase-js`.

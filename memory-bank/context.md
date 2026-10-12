@@ -24,7 +24,7 @@ AirGoCC est une application mobile communautaire de référencement d'aires de c
 
 L'app lit les aires proches via `spots_nearby`, les affiche sur la carte (`app/(tabs)/index.tsx`) et en liste (`app/(tabs)/list.tsx`). Une copie SQLite locale (`src/lib/localDb/`) sert le mode hors-ligne et la base bundlée au premier lancement. L'auth et les écritures (spots, avis, profil) passent par le client Supabase (`src/lib/supabase.ts`).
 
-Le projet Supabase gratuit se met en pause après 7 jours sans activité base. Un workflow GitHub Actions (`.github/workflows/supabase-keep-alive.yml`) fait une lecture réelle de `spots` chaque jour à 05:00 UTC pour éviter cette pause.
+Le projet Supabase gratuit se met en pause s'il n'y a pas assez de requêtes base sur 7 jours. Un projet en pause ne résout plus son nom d'hôte. Le workflow `.github/workflows/supabase-keep-alive.yml` envoie plusieurs lectures réelles (table `spots` et RPC `spots_nearby`) quatre fois par jour.
 
 ## Points d'attention
 

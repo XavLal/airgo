@@ -2,11 +2,12 @@
 
 ## En cours
 
-Rien en cours de développement. Dernier sujet clos : maintien du projet Supabase gratuit via un ping planifié.
+Rien en cours de développement. Le maintien Supabase tourne quatre fois par jour avec trois lectures à chaque passage.
 
 ## Fait (récent)
 
-- Workflow GitHub Actions « Keep Supabase awake » : lecture quotidienne de `spots` (limite 1). Test manuel OK, HTTP 200 (8 octobre 2026).
+- 12 octobre 2026 : le projet Supabase a été mis en pause malgré les pings des 9, 10 et 11 octobre. Le nom d'hôte ne se résolvait plus. Relance manuelle depuis le dashboard, puis vérification locale : HTTP 200 sur `spots` et `spots_nearby`.
+- Workflow GitHub Actions « Keep Supabase awake » : lecture quotidienne de `spots` (limite 1). Test manuel OK, HTTP 200 (8 octobre 2026). Le run planifié du 12 octobre a échoué parce que le projet était déjà en pause.
 - App Expo opérationnelle : carte, liste, fiche aire, ajout et édition, profil avec connexion OTP, filtres par type, avis.
 - Hors-ligne : SQLite local, synchro des spots, base bundlée (`scripts/generate-bundled-db.mjs`), import initial (`scripts/import-spots.mjs`).
 - Migrations présentes : soft delete, RLS select public, `spots_nearby` sans aires supprimées, garde-fou doublons, cache médias Google, unicité avis par spot et utilisateur.
@@ -18,4 +19,4 @@ Rien en cours de développement. Dernier sujet clos : maintien du projet Supabas
 
 ## Blocages / questions ouvertes
 
-Aucun. Le ping manuel a confirmé que les repository secrets sont corrects.
+Après le push, lancer une fois **Keep Supabase awake** à la main dans l'onglet Actions pour confirmer le nouveau rythme.

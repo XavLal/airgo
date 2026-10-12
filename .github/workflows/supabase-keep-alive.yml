@@ -2,16 +2,16 @@ name: Keep Supabase awake
 
 on:
   schedule:
-    # Tous les jours à 05:00 UTC. Marge large avant la pause des 7 jours,
-    # même si GitHub décale un run.
-    - cron: "0 5 * * *"
+    # Quatre fois par jour. Supabase demande quelques requêtes base
+    # par jour sur la semaine écoulée ; une seule lecture ne suffit pas.
+    - cron: "0 5,11,17,23 * * *"
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Lecture réelle de la table spots
+      - name: Plusieurs lectures réelles de la base
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -21,15 +21,41 @@ jobs:
             echo "Secrets SUPABASE_URL et SUPABASE_ANON_KEY manquants."
             exit 1
           fi
-          url="${SUPABASE_URL%/}/rest/v1/spots?select=id&limit=1"
-          code=$(curl -sS -o /tmp/supabase-ping.json -w "%{http_code}" \
-            -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            -H "Accept: application/json" \
-            "$url")
-          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
-            echo "Ping échoué (HTTP ${code})"
-            cat /tmp/supabase-ping.json
-            exit 1
-          fi
-          echo "Ping OK (HTTP ${code})"
+          base="${SUPABASE_URL%/}"
+
+          request() {
+            local method="$1"
+            local path="$2"
+            local body="${3:-}"
+            local attempt code
+            for attempt in 1 2 3; do
+              if [ -n "$body" ]; then
+                code=$(curl -sS --max-time 30 -o /tmp/supabase-ping.json -w "%{http_code}" \
+                  -X "$method" \
+                  -H "apikey: ${SUPABASE_ANON_KEY}" \
+                  -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+                  -H "Accept: application/json" \
+                  -H "Content-Type: application/json" \
+                  -d "$body" \
+                  "${base}${path}") || code="000"
+              else
+                code=$(curl -sS --max-time 30 -o /tmp/supabase-ping.json -w "%{http_code}" \
+                  -X "$method" \
+                  -H "apikey: ${SUPABASE_ANON_KEY}" \
+                  -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+                  -H "Accept: application/json" \
+                  "${base}${path}") || code="000"
+              fi
+              if [ "$code" -ge 200 ] && [ "$code" -lt 300 ]; then
+                echo "OK ${method} ${path} (HTTP ${code})"
+                return 0
+              fi
+              echo "Tentative ${attempt} échouée pour ${method} ${path} (HTTP ${code})"
+              sleep 15
+            done
+            return 1
+          }
+
+          request GET "/rest/v1/spots?select=id&limit=1"
+          request GET "/rest/v1/spots?select=id&limit=1&offset=20"
+          request POST "/rest/v1/rpc/spots_nearby" '{"lat":48.8566,"lng":2.3522,"radius_km":5}'
