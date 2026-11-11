@@ -1,5 +1,13 @@
 # Log des sessions
 
+## 2026-11-11 Alerte spatial_ref_sys
+
+- L’alerte « RLS Disabled in Public » vise la table système PostGIS, pas les données des aires.
+- Activer le RLS échoue : la table appartient à `supabase_admin`.
+- Migration `postgis_functions_search_path` appliquée sur AirGo (`20261111084420`). `search_path` des deux fonctions : `public, extensions`.
+- Vérification : `spots_nearby` autour de Paris renvoie 31 aires. L’alerte RLS sur `spatial_ref_sys` est toujours là : PostGIS 3.3.7 reste dans `public`, et `anon` peut encore écrire dans la table.
+- Suite : ticket support pour déplacer PostGIS vers `extensions`, sans `DROP EXTENSION`.
+
 ## 2026-10-12 Pause Supabase malgré le ping
 
 - L'e-mail d'avertissement a été suivi d'une pause réelle : le nom d'hôte du projet ne se résolvait plus, et le cron du 12 octobre a échoué.

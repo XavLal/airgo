@@ -32,3 +32,4 @@ Le projet Supabase gratuit se met en pause s'il n'y a pas assez de requêtes bas
 - Un health check Auth ne compte pas comme activité : le ping doit passer par PostgREST (`/rest/v1/spots`).
 - Les workflows planifiés GitHub ne tournent que sur la branche par défaut (`master`) et peuvent être décalés.
 - RLS : `spots` est lisible par `anon` pour les lignes non supprimées (`deleted_at IS NULL`). La RPC `spots_nearby` est `SECURITY DEFINER`.
+- PostGIS est dans le schéma `public`. `spatial_ref_sys` appartient à `supabase_admin` : le RLS ne peut pas être activé par le rôle `postgres`. Le correctif est un déplacement vers `extensions`, fait par le support.

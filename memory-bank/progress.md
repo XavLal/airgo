@@ -2,7 +2,7 @@
 
 ## En cours
 
-Rien en cours de développement. Le maintien Supabase tourne quatre fois par jour avec trois lectures à chaque passage.
+Alerte Security Advisor sur `public.spatial_ref_sys` toujours ouverte. La migration `postgis_functions_search_path` est appliquée (11 novembre 2026). Le déplacement de PostGIS vers `extensions` reste à demander au support.
 
 ## Fait (récent)
 
@@ -19,4 +19,5 @@ Rien en cours de développement. Le maintien Supabase tourne quatre fois par jou
 
 ## Blocages / questions ouvertes
 
-Après le push, lancer une fois **Keep Supabase awake** à la main dans l'onglet Actions pour confirmer le nouveau rythme.
+- Déplacer PostGIS de `public` vers `extensions` via le support Supabase. `DROP EXTENSION postgis CASCADE` supprimerait `spots.location`.
+- Après le push, lancer une fois **Keep Supabase awake** à la main dans l'onglet Actions pour confirmer le nouveau rythme.

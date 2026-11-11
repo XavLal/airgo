@@ -1,5 +1,15 @@
 # Décisions techniques
 
+## 2026-11-11 Alerte RLS sur spatial_ref_sys
+
+**Contexte :** Le Security Advisor signale `public.spatial_ref_sys` (RLS désactivé). PostGIS a été installé dans `public`. La table appartient à `supabase_admin`. `spots.location` est une colonne `geography`.
+
+**Décision :** Ne pas activer le RLS et ne pas faire `DROP EXTENSION postgis CASCADE`. Préparer `spots_nearby` et `spots_prevent_near_duplicate` avec `search_path = public, extensions`, puis demander au support Supabase de déplacer PostGIS vers `extensions`.
+
+**Pourquoi :** Seul le propriétaire peut activer le RLS ; un `REVOKE` lancé en tant que `postgres` ne retire rien. Un drop recrée l’extension mais supprime la colonne `location` et les index spatiaux.
+
+**Alternatives écartées :** `ALTER TABLE spatial_ref_sys ENABLE ROW LEVEL SECURITY`. Déplacement manuel par drop/recreate.
+
 ## 2026-10-12 Plusieurs lectures base par jour
 
 **Contexte :** Une lecture quotidienne de `spots` a renvoyé HTTP 200 les 8, 9, 10 et 11 octobre. Le projet a quand même été mis en pause. La doc Supabase demande quelques requêtes base par jour sur la semaine écoulée. Un projet en pause ne publie plus son DNS.
